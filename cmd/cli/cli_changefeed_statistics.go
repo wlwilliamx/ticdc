@@ -123,8 +123,17 @@ func newCmdStatisticsChangefeed(f factory.Factory) *cobra.Command {
 		Short: "Periodically check and output the status of a replication task (changefeed)",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			util.CheckErr(o.complete(f))
-			util.CheckErr(o.run(cmd))
+			experimental, err := cmd.Flags().GetBool("experimental")
+			if err != nil {
+				cobra.CheckErr(err)
+			}
+
+			if experimental {
+				util.CheckErr(o.complete(f))
+				util.CheckErr(o.run(cmd))
+			} else {
+				// TODO: run tiflow
+			}
 		},
 	}
 

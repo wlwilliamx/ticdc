@@ -18,7 +18,7 @@ import (
 
 	"github.com/pingcap/tiflow/cdc/api/owner"
 	"github.com/pingcap/tiflow/cdc/model"
-	"github.com/pingcap/tiflow/pkg/api/v2"
+	v2 "github.com/pingcap/tiflow/pkg/api/v2"
 	"github.com/pingcap/tiflow/pkg/cmd/context"
 	"github.com/pingcap/tiflow/pkg/cmd/factory"
 	"github.com/pingcap/tiflow/pkg/cmd/util"
@@ -106,8 +106,17 @@ func newCmdListChangefeed(f factory.Factory) *cobra.Command {
 		Short: "List all replication tasks (changefeeds) in TiCDC cluster",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			util.CheckErr(o.complete(f))
-			util.CheckErr(o.run(cmd))
+			experimental, err := cmd.Flags().GetBool("experimental")
+			if err != nil {
+				cobra.CheckErr(err)
+			}
+
+			if experimental {
+				util.CheckErr(o.complete(f))
+				util.CheckErr(o.run(cmd))
+			} else {
+				// TODO: run tiflow
+			}
 		},
 	}
 

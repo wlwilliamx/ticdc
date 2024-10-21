@@ -68,8 +68,17 @@ func newCmdPauseChangefeed(f factory.Factory) *cobra.Command {
 		Short: "Pause a replication task (changefeed)",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			util.CheckErr(o.complete(f))
-			util.CheckErr(o.run())
+			experimental, err := cmd.Flags().GetBool("experimental")
+			if err != nil {
+				cobra.CheckErr(err)
+			}
+
+			if experimental {
+				util.CheckErr(o.complete(f))
+				util.CheckErr(o.run())
+			} else {
+				// TODO: run tiflow
+			}
 		},
 	}
 

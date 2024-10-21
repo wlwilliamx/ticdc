@@ -38,6 +38,8 @@ func NewCmd() *cobra.Command {
 func main() {
 	cmd := NewCmd()
 
+	cmd.PersistentFlags().BoolP("experimental", "e", false, "Run on new achitecture (experimental feature)")
+
 	cmd.SetOut(os.Stdout)
 	cmd.SetErr(os.Stderr)
 

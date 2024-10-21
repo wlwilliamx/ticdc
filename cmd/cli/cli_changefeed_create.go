@@ -354,11 +354,19 @@ func newCmdCreateChangefeed(f factory.Factory) *cobra.Command {
 		Short: "Create a new replication task (changefeed)",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			ctx := cmdcontext.GetDefaultContext()
+			experimental, err := cmd.Flags().GetBool("experimental")
+			if err != nil {
+				cobra.CheckErr(err)
+			}
 
-			util.CheckErr(o.complete(f))
-			util.CheckErr(o.validate(cmd))
-			util.CheckErr(o.run(ctx, cmd))
+			if experimental {
+				ctx := cmdcontext.GetDefaultContext()
+				util.CheckErr(o.complete(f))
+				util.CheckErr(o.validate(cmd))
+				util.CheckErr(o.run(ctx, cmd))
+			} else {
+				// TODO: run tiflow
+			}
 		},
 	}
 

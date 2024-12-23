@@ -75,7 +75,7 @@ jobs:
 
   coordinator_unit_test:
     runs-on: ubuntu-latest 
-    name: Coordinator And EventService Unit Test
+    name: Coordinator Unit Test
     steps:
       - name: Check out code
         uses: actions/checkout@v2
@@ -88,4 +88,23 @@ jobs:
       - name: Unit Test
         run: |
           go test --tags=intest -timeout 120s  github.com/pingcap/ticdc/coordinator/...
+
+  eventservice_unit_test:
+    runs-on: ubuntu-latest 
+    name: EventService Unit Test
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v2
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v3
+        with:
+          go-version: '1.23'
+
+      - name: Unit Test
+        run: |
+          go test --tags=intest -timeout 120s  github.com/pingcap/ticdc/pkg/eventservice/...
+
+
+
 

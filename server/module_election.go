@@ -130,6 +130,8 @@ func (e *elector) campaignCoordinator(ctx context.Context) error {
 			coordinatorVersion, 10000, time.Minute)
 		e.svr.setCoordinator(co)
 		err = co.Run(ctx)
+
+		// When coordinator exits, we need to stop it.
 		e.svr.coordinator.AsyncStop()
 		e.svr.setCoordinator(nil)
 
@@ -154,7 +156,13 @@ func (e *elector) campaignCoordinator(ctx context.Context) error {
 		log.Info("coordinator resigned successfully",
 			zap.String("captureID", string(e.svr.info.ID)),
 			zap.Int64("coordinatorVersion", coordinatorVersion))
-		if err != nil {
+
+		// 1. If the context is cancelled by the parent context, the loop should exit at the next campaign.
+		// 2. If the context is cancelled within the coordinator, it means the coordinator is exited by Resign API,
+		// we should keep the loop running to try to election coordinator again.
+		// So, regardless of the cause of the context.Canceled, we should not exit here.
+		// We should proceed to the next iteration of the loop, allowing subsequent logic to make the determination.
+		if err != nil && err != context.Canceled {
 			log.Warn("run coordinator exited with error",
 				zap.String("captureID", string(e.svr.info.ID)),
 				zap.Int64("coordinatorVersion", coordinatorVersion),
@@ -162,10 +170,12 @@ func (e *elector) campaignCoordinator(ctx context.Context) error {
 			// for errors, return error and let server exits or restart
 			return errors.Trace(err)
 		}
-		// if coordinator exits normally, continue the campaign loop and try to election coordinator again
+
+		// If coordinator exits normally, continue the campaign loop and try to election coordinator again
 		log.Info("run coordinator exited normally",
 			zap.String("captureID", string(e.svr.info.ID)),
-			zap.Int64("coordinatorVersion", coordinatorVersion))
+			zap.Int64("coordinatorVersion", coordinatorVersion),
+			zap.String("error", err.Error()))
 	}
 }
 
@@ -222,7 +232,6 @@ func (e *elector) campaignLogCoordinator(ctx context.Context) error {
 		}
 
 		// FIXME: get log coordinator version from etcd and add it to log
-
 		log.Info("campaign log coordinator successfully",
 			zap.String("captureID", string(e.svr.info.ID)))
 

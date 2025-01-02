@@ -302,12 +302,12 @@ var allDDLHandlers = map[model.ActionType]*persistStorageDDLHandler{
 		buildDDLEventFunc:          buildDDLEventForDropPartition,
 	},
 	model.ActionCreateView: {
-		buildPersistedDDLEventFunc: buildPersistedDDLEventCommon,
-		updateDDLHistoryFunc:       updateDDLHistoryForCreateView,
+		buildPersistedDDLEventFunc: buildPersistedDDLEventForCreateDropView,
+		updateDDLHistoryFunc:       updateDDLHistoryForCreateDropView,
 		updateSchemaMetadataFunc:   updateSchemaMetadataIgnore,
 		iterateEventTablesFunc:     iterateEventTablesIgnore,
 		extractTableInfoFunc:       extractTableInfoFuncIgnore,
-		buildDDLEventFunc:          buildDDLEventForCreateView,
+		buildDDLEventFunc:          buildDDLEventForCreateDropView,
 	},
 	model.ActionTruncateTablePartition: {
 		buildPersistedDDLEventFunc: buildPersistedDDLEventForNormalPartitionDDL,
@@ -369,6 +369,15 @@ var allDDLHandlers = map[model.ActionType]*persistStorageDDLHandler{
 		iterateEventTablesFunc:     iterateEventTablesForSingleTableDDL,
 		extractTableInfoFunc:       extractTableInfoFuncForSingleTableDDL,
 		buildDDLEventFunc:          buildDDLEventForNormalDDLOnSingleTableForTiDB,
+	},
+
+	model.ActionMultiSchemaChange: {
+		buildPersistedDDLEventFunc: buildPersistedDDLEventForNormalDDLOnSingleTable,
+		updateDDLHistoryFunc:       updateDDLHistoryForNormalDDLOnSingleTable,
+		updateSchemaMetadataFunc:   updateSchemaMetadataIgnore,
+		iterateEventTablesFunc:     iterateEventTablesForSingleTableDDL,
+		extractTableInfoFunc:       extractTableInfoFuncForSingleTableDDL,
+		buildDDLEventFunc:          buildDDLEventForNormalDDLOnSingleTable,
 	},
 }
 
@@ -506,6 +515,12 @@ func buildPersistedDDLEventForCreateDropSchema(args buildPersistedDDLEventFuncAr
 		zap.Int64("schemaID", event.CurrentSchemaID),
 		zap.String("schemaName", event.DBInfo.Name.O))
 	event.CurrentSchemaName = event.DBInfo.Name.O
+	return event
+}
+
+func buildPersistedDDLEventForCreateDropView(args buildPersistedDDLEventFuncArgs) PersistedDDLEvent {
+	event := buildPersistedDDLEventCommon(args)
+	event.CurrentSchemaName = getSchemaName(args.databaseMap, event.CurrentSchemaID)
 	return event
 }
 
@@ -670,17 +685,11 @@ func updateDDLHistoryForDropPartition(args updateDDLHistoryFuncArgs) []uint64 {
 	return args.tableTriggerDDLHistory
 }
 
-func updateDDLHistoryForCreateView(args updateDDLHistoryFuncArgs) []uint64 {
+func updateDDLHistoryForCreateDropView(args updateDDLHistoryFuncArgs) []uint64 {
 	args.appendTableTriggerDDLHistory(args.ddlEvent.FinishedTs)
 	for tableID := range args.tableMap {
 		args.appendTablesDDLHistory(args.ddlEvent.FinishedTs, tableID)
 	}
-	return args.tableTriggerDDLHistory
-}
-
-func updateDDLHistoryForDropView(args updateDDLHistoryFuncArgs) []uint64 {
-	args.appendTableTriggerDDLHistory(args.ddlEvent.FinishedTs)
-	args.appendTablesDDLHistory(args.ddlEvent.FinishedTs, args.ddlEvent.PrevPartitions...)
 	return args.tableTriggerDDLHistory
 }
 
@@ -1452,15 +1461,7 @@ func buildDDLEventForDropPartition(rawEvent *PersistedDDLEvent, tableFilter filt
 	return ddlEvent
 }
 
-func buildDDLEventForCreateView(rawEvent *PersistedDDLEvent, tableFilter filter.Filter) commonEvent.DDLEvent {
-	ddlEvent := buildDDLEventCommon(rawEvent, tableFilter, WithoutTiDBOnly)
-	ddlEvent.BlockedTables = &commonEvent.InfluencedTables{
-		InfluenceType: commonEvent.InfluenceTypeAll,
-	}
-	return ddlEvent
-}
-
-func buildDDLEventForDropView(rawEvent *PersistedDDLEvent, tableFilter filter.Filter) commonEvent.DDLEvent {
+func buildDDLEventForCreateDropView(rawEvent *PersistedDDLEvent, tableFilter filter.Filter) commonEvent.DDLEvent {
 	ddlEvent := buildDDLEventCommon(rawEvent, tableFilter, WithoutTiDBOnly)
 	ddlEvent.BlockedTables = &commonEvent.InfluencedTables{
 		InfluenceType: commonEvent.InfluenceTypeAll,

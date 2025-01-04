@@ -206,11 +206,16 @@ jobs:
           make integration_test_build
           ls -l bin/ && ls -l tools/bin/
 
+      - name: Test fail_over_ddl_H
+        run: |
+          pwd && ls -l bin/ && ls -l tools/bin/
+          export TICDC_NEWARCH=true && make integration_test CASE=fail_over_ddl_H
+
       - name: Test fail_over_ddl_I
         run: |
           pwd && ls -l bin/ && ls -l tools/bin/
           export TICDC_NEWARCH=true && make integration_test CASE=fail_over_ddl_I
-
+      
       - name: Test fail_over_ddl_J
         run: |
           pwd && ls -l bin/ && ls -l tools/bin/

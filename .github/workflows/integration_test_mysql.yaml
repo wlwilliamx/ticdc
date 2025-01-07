@@ -12,6 +12,7 @@ on:
       - 'OWNERS_ALIASES'
 
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - master
       - "release-[0-9].[0-9]*"
@@ -30,7 +31,7 @@ jobs:
   # To boost the test speed, we split every 10 test cases into a group.
   e2e_test_group_1:
     runs-on: ubuntu-latest 
-    name: E2E Test
+    name: E2E Test Group 1
     steps:
       - name: Check out code
         uses: actions/checkout@v2
@@ -81,6 +82,12 @@ jobs:
         if: ${{ success() }}
         run: |
           export TICDC_NEWARCH=true && make integration_test CASE=foreign_key
+
+      # The 7th case in this group
+      - name: Test generate_column
+        if: ${{ success() }}
+        run: |
+          export TICDC_NEWARCH=true && make integration_test CASE=generate_column
 
       - name: Upload test logs
         if: always()

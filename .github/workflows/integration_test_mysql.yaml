@@ -66,10 +66,10 @@ jobs:
         run: |
           export TICDC_NEWARCH=true && make integration_test CASE=sql_mode
         
-      # - name: Test changefeed_pause_resume
-      #   if: ${{ success() }}
-      #   run: |
-      #     export TICDC_NEWARCH=true && make integration_test CASE=changefeed_pause_resume
+      - name: Test changefeed_pause_resume
+        if: ${{ success() }}
+        run: |
+          export TICDC_NEWARCH=true && make integration_test CASE=changefeed_pause_resume
 
       - name: Test changefeed_reconstruct
         if: ${{ success() }}
@@ -430,6 +430,11 @@ jobs:
         run: |
           pwd && ls -l bin/ && ls -l tools/bin/
           export TICDC_NEWARCH=true && make integration_test CASE=fail_over_ddl_M
+      
+      - name: Test fail_over_ddl_O
+        run: |
+          pwd && ls -l bin/ && ls -l tools/bin/
+          export TICDC_NEWARCH=true && make integration_test CASE=fail_over_ddl_O
           
       - name: Test fail_over_ddl_N
         run: |

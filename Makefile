@@ -59,6 +59,9 @@ RELEASE_VERSION =
 ifeq ($(RELEASE_VERSION),)
 	RELEASE_VERSION := $(shell git describe --tags --dirty)
 endif
+ifeq ($(RELEASE_VERSION),)
+	RELEASE_VERSION := v9.0.0-alpha
+endif
 
 # Version LDFLAGS.
 LDFLAGS += -X "$(CDC_PKG)/version.ReleaseVersion=$(RELEASE_VERSION)"

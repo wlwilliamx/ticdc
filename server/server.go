@@ -43,6 +43,7 @@ import (
 	"github.com/pingcap/tiflow/cdc/model"
 	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"github.com/pingcap/tiflow/pkg/pdutil"
+	"github.com/pingcap/tiflow/pkg/security"
 	"github.com/pingcap/tiflow/pkg/tcpserver"
 	"github.com/tikv/client-go/v2/tikv"
 	pd "github.com/tikv/pd/client"
@@ -56,8 +57,7 @@ const (
 )
 
 type server struct {
-	captureMu sync.Mutex
-	info      *node.Info
+	info *node.Info
 
 	liveness model.Liveness
 
@@ -69,6 +69,8 @@ type server struct {
 
 	// session keeps alive between the server and etcd
 	session *concurrency.Session
+
+	security *security.Credential
 
 	EtcdClient etcd.CDCEtcdClient
 
@@ -103,6 +105,7 @@ func New(conf *config.ServerConfig, pdEndpoints []string) (tiserver.Server, erro
 	s := &server{
 		pdEndpoints: pdEndpoints,
 		tcpServer:   tcpServer,
+		security:    conf.Security,
 	}
 	return s, nil
 }
@@ -115,7 +118,7 @@ func (c *server) initialize(ctx context.Context) error {
 	}
 
 	appcontext.SetID(c.info.ID.String())
-	messageCenter := messaging.NewMessageCenter(ctx, c.info.ID, c.info.Epoch, config.NewDefaultMessageCenterConfig())
+	messageCenter := messaging.NewMessageCenter(ctx, c.info.ID, c.info.Epoch, config.NewDefaultMessageCenterConfig(), c.security)
 	appcontext.SetService(appcontext.MessageCenter, messageCenter)
 
 	appcontext.SetService(appcontext.EventCollector, eventcollector.New(ctx, c.info.ID))
@@ -132,7 +135,7 @@ func (c *server) initialize(ctx context.Context) error {
 		&logpuller.SubscriptionClientConfig{
 			RegionRequestWorkerPerStore: 16,
 		}, c.pdClient, c.RegionCache, c.PDClock,
-		txnutil.NewLockerResolver(c.KVStorage.(tikv.Storage)), conf.Security,
+		txnutil.NewLockerResolver(c.KVStorage.(tikv.Storage)), c.security,
 	)
 	schemaStore := schemastore.New(ctx, conf.DataDir, subscriptionClient, c.pdClient, c.PDClock, c.KVStorage)
 	eventStore := eventstore.New(ctx, conf.DataDir, subscriptionClient, c.PDClock)

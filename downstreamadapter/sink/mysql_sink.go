@@ -19,6 +19,8 @@ import (
 	"net/url"
 	"sync/atomic"
 
+	"github.com/pingcap/errors"
+
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/pingcap/log"
 	"github.com/pingcap/ticdc/downstreamadapter/worker"
@@ -29,7 +31,6 @@ import (
 	"github.com/pingcap/ticdc/pkg/sink/mysql"
 	"github.com/pingcap/ticdc/pkg/sink/util"
 	"github.com/pingcap/tidb/pkg/sessionctx/variable"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
@@ -48,81 +49,51 @@ type MysqlSink struct {
 	workerCount int
 
 	db         *sql.DB
-	errgroup   *errgroup.Group
 	statistics *metrics.Statistics
 
-	errCh    chan error
 	isNormal uint32 // if sink is normal, isNormal is 1, otherwise is 0
 }
 
-func NewMysqlSink(ctx context.Context, changefeedID common.ChangeFeedID, workerCount int, config *config.ChangefeedConfig, sinkURI *url.URL, errCh chan error) (*MysqlSink, error) {
-	errgroup, ctx := errgroup.WithContext(ctx)
-	mysqlSink := MysqlSink{
-		changefeedID: changefeedID,
-		dmlWorker:    make([]*worker.MysqlDMLWorker, workerCount),
-		workerCount:  workerCount,
-		errgroup:     errgroup,
-		statistics:   metrics.NewStatistics(changefeedID, "TxnSink"),
-		errCh:        errCh,
-		isNormal:     1,
-	}
+func verifyMySQLSink(changefeedID common.ChangeFeedID, uri *url.URL, config *config.ChangefeedConfig) error {
+	_, err := mysql.NewMySQLConfig(changefeedID, uri, config)
+	return err
+}
 
+func newMySQLSink(ctx context.Context, changefeedID common.ChangeFeedID, workerCount int, config *config.ChangefeedConfig, sinkURI *url.URL) (*MysqlSink, error) {
 	cfg, db, err := mysql.NewMysqlConfigAndDB(ctx, changefeedID, sinkURI, config)
 	if err != nil {
 		return nil, err
 	}
-	cfg.SyncPointRetention = config.SyncPointRetention
-
-	for i := 0; i < workerCount; i++ {
-		mysqlSink.dmlWorker[i] = worker.NewMysqlDMLWorker(ctx, db, cfg, i, mysqlSink.changefeedID, errgroup, mysqlSink.statistics)
-	}
-	mysqlSink.ddlWorker = worker.NewMysqlDDLWorker(ctx, db, cfg, mysqlSink.changefeedID, errgroup, mysqlSink.statistics)
-	mysqlSink.db = db
-
-	go mysqlSink.run()
-
-	return &mysqlSink, nil
+	return newMysqlSinkWithDBAndConfig(ctx, changefeedID, workerCount, cfg, db), nil
 }
 
-// for test
-func NewMysqlSinkWithDBAndConfig(ctx context.Context, changefeedID common.ChangeFeedID, workerCount int, cfg *mysql.MysqlConfig, db *sql.DB, errCh chan error) (*MysqlSink, error) {
-	errgroup, ctx := errgroup.WithContext(ctx)
-	mysqlSink := MysqlSink{
+func newMysqlSinkWithDBAndConfig(ctx context.Context, changefeedID common.ChangeFeedID, workerCount int, cfg *mysql.MysqlConfig, db *sql.DB) *MysqlSink {
+	stat := metrics.NewStatistics(changefeedID, "TxnSink")
+	mysqlSink := &MysqlSink{
 		changefeedID: changefeedID,
+		db:           db,
 		dmlWorker:    make([]*worker.MysqlDMLWorker, workerCount),
 		workerCount:  workerCount,
-		errgroup:     errgroup,
-		statistics:   metrics.NewStatistics(changefeedID, "TxnSink"),
-		errCh:        errCh,
+		statistics:   stat,
 		isNormal:     1,
 	}
-
 	for i := 0; i < workerCount; i++ {
-		mysqlSink.dmlWorker[i] = worker.NewMysqlDMLWorker(ctx, db, cfg, i, mysqlSink.changefeedID, errgroup, mysqlSink.statistics)
+		mysqlSink.dmlWorker[i] = worker.NewMysqlDMLWorker(ctx, db, cfg, i, changefeedID, stat)
 	}
-	mysqlSink.ddlWorker = worker.NewMysqlDDLWorker(ctx, db, cfg, mysqlSink.changefeedID, errgroup, mysqlSink.statistics)
-	mysqlSink.db = db
-
-	go mysqlSink.run()
-
-	return &mysqlSink, nil
+	mysqlSink.ddlWorker = worker.NewMysqlDDLWorker(ctx, db, cfg, mysqlSink.changefeedID, stat)
+	return mysqlSink
 }
 
-func (s *MysqlSink) run() {
+func (s *MysqlSink) Run(ctx context.Context) error {
+	g, ctx := errgroup.WithContext(ctx)
 	for i := 0; i < s.workerCount; i++ {
-		s.dmlWorker[i].Run()
+		g.Go(func() error {
+			return s.dmlWorker[i].Run()
+		})
 	}
-	err := s.errgroup.Wait()
-	if errors.Cause(err) != context.Canceled {
-		atomic.StoreUint32(&s.isNormal, 0)
-		select {
-		case s.errCh <- err:
-		default:
-			log.Error("error channel is full, discard error",
-				zap.Any("ChangefeedID", s.changefeedID.String()),
-				zap.Error(err))
-		}
-	}
+	err := g.Wait()
+	atomic.StoreUint32(&s.isNormal, 0)
+	return errors.Trace(err)
 }
 
 func (s *MysqlSink) IsNormal() bool {
@@ -180,10 +151,13 @@ func (s *MysqlSink) GetStartTsList(tableIds []int64, startTsList []int64, remove
 	return startTsList, nil
 }
 
-func (s *MysqlSink) Close(removeChangefeed bool) error {
+func (s *MysqlSink) Close(removeChangefeed bool) {
 	// when remove the changefeed, we need to remove the ddl ts item in the ddl worker
 	if removeChangefeed {
-		return s.ddlWorker.RemoveDDLTsItem()
+		if err := s.ddlWorker.RemoveDDLTsItem(); err != nil {
+			log.Warn("close mysql sink, remove changefeed meet error",
+				zap.Any("changefeed", s.changefeedID.String()), zap.Error(err))
+		}
 	}
 	for i := 0; i < s.workerCount; i++ {
 		s.dmlWorker[i].Close()
@@ -191,9 +165,10 @@ func (s *MysqlSink) Close(removeChangefeed bool) error {
 
 	s.ddlWorker.Close()
 
-	s.db.Close()
+	if err := s.db.Close(); err != nil {
+		log.Warn("close mysql sink db meet error", zap.Any("changefeed", s.changefeedID.String()), zap.Error(err))
+	}
 	s.statistics.Close()
-	return nil
 }
 
 func MysqlSinkForTest() (*MysqlSink, sqlmock.Sqlmock) {
@@ -205,7 +180,8 @@ func MysqlSinkForTest() (*MysqlSink, sqlmock.Sqlmock) {
 	cfg.MaxAllowedPacket = int64(variable.DefMaxAllowedPacket)
 	cfg.CachePrepStmts = false
 
-	errCh := make(chan error, 16)
-	sink, _ := NewMysqlSinkWithDBAndConfig(ctx, changefeedID, 8, cfg, db, errCh)
+	sink := newMysqlSinkWithDBAndConfig(ctx, changefeedID, 1, cfg, db)
+	go sink.Run(ctx)
+
 	return sink, mock
 }

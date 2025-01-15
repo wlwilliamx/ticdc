@@ -188,7 +188,13 @@ func encodeResolvedTs(ts uint64) ([]byte, []byte) {
 	return keyOutput.Bytes(), valueOutput.Bytes()
 }
 
-func writeColumnFieldValue(writer *util.JSONWriter, col *model.ColumnInfo, row *chunk.Row, idx int, tableInfo *commonType.TableInfo) {
+func writeColumnFieldValue(
+	writer *util.JSONWriter,
+	col *model.ColumnInfo,
+	row *chunk.Row,
+	idx int,
+	tableInfo *commonType.TableInfo,
+) {
 	colType := col.GetType()
 	flag := *tableInfo.GetColumnFlags()[col.ID]
 	whereHandle := flag.IsHandleKey()

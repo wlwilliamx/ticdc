@@ -15,6 +15,7 @@ package sink
 
 import (
 	"context"
+
 	"github.com/pingcap/log"
 	"github.com/pingcap/ticdc/pkg/common"
 	commonEvent "github.com/pingcap/ticdc/pkg/common/event"

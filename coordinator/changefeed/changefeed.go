@@ -139,6 +139,11 @@ func (c *Changefeed) UpdateStatus(newStatus *heartbeatpb.MaintainerStatus) (bool
 	return false, model.StateNormal, nil
 }
 
+func (c *Changefeed) ForceUpdateStatus(newStatus *heartbeatpb.MaintainerStatus) (bool, model.FeedState, *heartbeatpb.RunningError) {
+	c.status.Store(newStatus)
+	return c.backoff.CheckStatus(newStatus)
+}
+
 func (c *Changefeed) IsMQSink() bool {
 	return c.isMQSink
 }

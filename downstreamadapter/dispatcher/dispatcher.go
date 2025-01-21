@@ -231,12 +231,12 @@ func (d *Dispatcher) HandleDispatcherStatus(dispatcherStatus *heartbeatpb.Dispat
 		pendingEvent, blockStatus := d.blockEventStatus.getEventAndStage()
 		if pendingEvent == nil && action.CommitTs > d.GetResolvedTs() {
 			// we have not receive the block event, and the action is for the future event, so just ignore
-			log.Info("pending event is nil, and the action's commit is larger than dispatchers resolvedTs", zap.Uint64("resolvedTs", d.GetResolvedTs()), zap.Uint64("action commitTs", action.CommitTs), zap.String("dispatcher", d.id.String()))
+			log.Info("pending event is nil, and the action's commit is larger than dispatchers resolvedTs", zap.Uint64("resolvedTs", d.GetResolvedTs()), zap.Uint64("actionCommitTs", action.CommitTs), zap.Any("dispatcher", d.id))
 			// we have not receive the block event, and the action is for the future event, so just ignore
 			return
 		}
 		if pendingEvent != nil && action.CommitTs == pendingEvent.GetCommitTs() && blockStatus == heartbeatpb.BlockStage_WAITING {
-			log.Info("pending event get the action", zap.Any("action", action), zap.String("dispatcher", d.id.String()), zap.Uint64("pendingEvent commitTs", pendingEvent.GetCommitTs()))
+			log.Info("pending event get the action", zap.Any("action", action), zap.Any("dispatcher", d.id), zap.Uint64("pendingEventCommitTs", pendingEvent.GetCommitTs()))
 			d.blockEventStatus.updateBlockStage(heartbeatpb.BlockStage_WRITING)
 			pendingEvent.PushFrontFlushFunc(func() {
 				// clear blockEventStatus should be before wake ds.

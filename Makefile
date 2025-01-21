@@ -213,7 +213,7 @@ unit_test_in_verify_ci: check_failpoint_ctl tools/bin/gotestsum tools/bin/gocov 
 	@echo "Running unit tests..."
 	@export log_level=error;\
 	CGO_ENABLED=1 tools/bin/gotestsum --junitfile cdc-junit-report.xml -- -v -timeout 120s -p $(P) --race --tags=intest \
-	-parallel=16 \ # Run tests in parallel to speed up the CI. The number of cores available for UTs is 16.
+	-parallel=16 \
 	-covermode=atomic -coverprofile="$(TEST_DIR)/cov.unit.out" \
 	$(UT_PACKAGES_DISPATCHER) \
 	$(UT_PACKAGES_MAINTAINER) \

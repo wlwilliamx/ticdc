@@ -184,14 +184,14 @@ EOF
 
 	# restart server
 	run_cdc_server \
-	--workdir $WORK_DIR \
-	--binary $CDC_BINARY \
-	--logsuffix "_${TEST_NAME}_tls1_restart" \
-	--pd "https://${TLS_PD_HOST}:${TLS_PD_PORT}" \
-	--addr "127.0.0.1:8300" \
-	--config "$WORK_DIR/server.toml" \
-	--tlsdir "$TLS_DIR" \
-	--cert-allowed-cn "client" # The common name of client.pem
+		--workdir $WORK_DIR \
+		--binary $CDC_BINARY \
+		--logsuffix "_${TEST_NAME}_tls1_restart" \
+		--pd "https://${TLS_PD_HOST}:${TLS_PD_PORT}" \
+		--addr "127.0.0.1:8300" \
+		--config "$WORK_DIR/server.toml" \
+		--tlsdir "$TLS_DIR" \
+		--cert-allowed-cn "client" # The common name of client.pem
 
 	# Check if the coordinator is online
 	for i in {1..100}; do

@@ -152,7 +152,6 @@ function test_expire_capture() {
 	# resume the owner
 	kill -SIGCONT $owner_pid
 
-
 	run_sql "UPDATE test.availability1 set val = 22 where id = 2;"
 	run_sql "DELETE from test.availability1 where id = 3;"
 	ensure $MAX_RETRIES nonempty 'select id, val from test.availability1 where id=2 and val=22'

@@ -126,7 +126,6 @@ func NewEventDispatcherManager(
 	maintainerID node.ID,
 	newChangefeed bool,
 ) (*EventDispatcherManager, uint64, error) {
-
 	failpoint.Inject("NewEventDispatcherManagerDelay", nil)
 
 	ctx, cancel := context.WithCancel(context.Background())

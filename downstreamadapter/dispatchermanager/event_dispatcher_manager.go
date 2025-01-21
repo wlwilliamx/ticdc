@@ -105,7 +105,7 @@ type EventDispatcherManager struct {
 	closing atomic.Bool
 	closed  atomic.Bool
 	cancel  context.CancelFunc
-	wg      *sync.WaitGroup
+	wg      sync.WaitGroup
 
 	metricTableTriggerEventDispatcherCount prometheus.Gauge
 	metricEventDispatcherCount             prometheus.Gauge
@@ -129,7 +129,6 @@ func NewEventDispatcherManager(
 	failpoint.Inject("NewEventDispatcherManagerDelay", nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	wg := &sync.WaitGroup{}
 	pdClock := appcontext.GetService[pdutil.Clock](appcontext.DefaultPDClock)
 	manager := &EventDispatcherManager{
 		dispatcherMap:                          newDispatcherMap(),
@@ -139,10 +138,9 @@ func NewEventDispatcherManager(
 		statusesChan:                           make(chan TableSpanStatusWithSeq, 8192),
 		blockStatusesChan:                      make(chan *heartbeatpb.TableSpanBlockStatus, 1024*1024),
 		errCh:                                  make(chan error, 1),
-		wg:                                     wg,
 		cancel:                                 cancel,
 		config:                                 cfConfig,
-		filterConfig:                           toFilterConfigPB(cfConfig.Filter),
+		filterConfig:                           &eventpb.FilterConfig{CaseSensitive: cfConfig.CaseSensitive, ForceReplicate: cfConfig.ForceReplicate, FilterConfig: toFilterConfigPB(cfConfig.Filter)},
 		schemaIDToDispatchers:                  dispatcher.NewSchemaIDToDispatchers(),
 		latestWatermark:                        NewWatermark(startTs),
 		metricTableTriggerEventDispatcherCount: metrics.TableTriggerEventDispatcherGauge.WithLabelValues(changefeedID.Namespace(), changefeedID.Name()),
@@ -185,9 +183,9 @@ func NewEventDispatcherManager(
 		}
 	}
 
-	wg.Add(1)
+	manager.wg.Add(1)
 	go func() {
-		defer wg.Done()
+		defer manager.wg.Done()
 		err = manager.sink.Run(ctx)
 		if err != nil && !errors.Is(errors.Cause(err), context.Canceled) {
 			select {
@@ -201,23 +199,23 @@ func NewEventDispatcherManager(
 	}()
 
 	// collect errors from error channel
-	wg.Add(1)
+	manager.wg.Add(1)
 	go func() {
-		defer wg.Done()
+		defer manager.wg.Done()
 		manager.collectErrors(ctx)
 	}()
 
 	// collect heart beat info from all dispatchers
-	wg.Add(1)
+	manager.wg.Add(1)
 	go func() {
-		defer wg.Done()
+		defer manager.wg.Done()
 		manager.collectComponentStatusWhenChanged(ctx)
 	}()
 
 	// collect block status from all dispatchers
-	wg.Add(1)
+	manager.wg.Add(1)
 	go func() {
-		defer wg.Done()
+		defer manager.wg.Done()
 		manager.collectBlockStatusRequest(ctx)
 	}()
 

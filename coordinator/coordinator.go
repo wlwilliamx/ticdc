@@ -46,10 +46,13 @@ var (
 	metricsDSPendingQueueLen = metrics.DynamicStreamPendingQueueLen.WithLabelValues("coordinator")
 )
 
+var updateGCTickerInterval = 1 * time.Minute
+
 // coordinator implements the Coordinator interface
 type coordinator struct {
 	nodeInfo     *node.Info
 	version      int64
+	gcServiceID  string
 	lastTickTime time.Time
 
 	controller *Controller
@@ -74,7 +77,7 @@ func New(node *node.Info,
 	pdClient pd.Client,
 	pdClock pdutil.Clock,
 	backend changefeed.Backend,
-	clusterID string,
+	gcServiceID string,
 	version int64,
 	batchSize int,
 	balanceCheckInterval time.Duration,
@@ -83,8 +86,9 @@ func New(node *node.Info,
 	c := &coordinator{
 		version:             version,
 		nodeInfo:            node,
+		gcServiceID:         gcServiceID,
 		lastTickTime:        time.Now(),
-		gcManager:           gc.NewManager(clusterID, pdClient, pdClock),
+		gcManager:           gc.NewManager(gcServiceID, pdClient, pdClock),
 		eventCh:             chann.NewAutoDrainChann[*Event](),
 		pdClient:            pdClient,
 		pdClock:             pdClock,
@@ -142,7 +146,10 @@ func (c *coordinator) recvMessages(_ context.Context, msg *messaging.TargetMessa
 //     - if a node is removed, clean related state machine that bind to that node.
 //  3. Schedule changefeeds if all node is bootstrapped.
 func (c *coordinator) Run(ctx context.Context) error {
-	gcTick := time.NewTicker(time.Minute)
+	failpoint.Inject("InjectUpdateGCTickerInterval", func(val failpoint.Value) {
+		updateGCTickerInterval = time.Duration(val.(int) * int(time.Millisecond))
+	})
+	gcTick := time.NewTicker(updateGCTickerInterval)
 	ctx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
 	defer gcTick.Stop()
@@ -219,6 +226,20 @@ func (c *coordinator) handleStateChangedEvent(ctx context.Context, event *Change
 		c.controller.changefeedDB.Resume(event.ChangefeedID, false, false)
 	case model.StateFailed, model.StateFinished:
 		c.controller.operatorController.StopChangefeed(ctx, event.ChangefeedID, false)
+	case model.StateNormal:
+		log.Info("changefeed is resumed or created successfully, try to delete its gc safepoint",
+			zap.String("changefeed", event.ChangefeedID.String()))
+		// We need to clean its gc safepoint when changefeed is resumed or created
+		gcServiceID := c.getEnsureGCServiceID(gc.EnsureGCServiceCreating)
+		err := gc.UndoEnsureChangefeedStartTsSafety(ctx, c.pdClient, gcServiceID, event.ChangefeedID)
+		if err != nil {
+			log.Warn("failed to delete create changefeed gc safepoint", zap.Error(err))
+		}
+		gcServiceID = c.getEnsureGCServiceID(gc.EnsureGCServiceResuming)
+		err = gc.UndoEnsureChangefeedStartTsSafety(ctx, c.pdClient, gcServiceID, event.ChangefeedID)
+		if err != nil {
+			log.Warn("failed to delete resume changefeed gc safepoint", zap.Error(err))
+		}
 	default:
 	}
 	return nil
@@ -287,7 +308,12 @@ func (c *coordinator) saveCheckpointTs(ctx context.Context, cfs map[common.Chang
 }
 
 func (c *coordinator) CreateChangefeed(ctx context.Context, info *config.ChangeFeedInfo) error {
-	return c.controller.CreateChangefeed(ctx, info)
+	err := c.controller.CreateChangefeed(ctx, info)
+	if err != nil {
+		return errors.Trace(err)
+	}
+	// update gc safepoint after create changefeed
+	return c.updateGCSafepoint(ctx)
 }
 
 func (c *coordinator) RemoveChangefeed(ctx context.Context, id common.ChangeFeedID) (uint64, error) {
@@ -357,4 +383,9 @@ func (c *coordinator) updateGCSafepoint(
 	gcSafepointUpperBound := minCheckpointTs - 1
 	err := c.gcManager.TryUpdateGCSafePoint(ctx, gcSafepointUpperBound, false)
 	return errors.Trace(err)
+}
+
+// GetEnsureGCServiceID return the prefix for the gc service id when changefeed is creating
+func (c *coordinator) getEnsureGCServiceID(tag string) string {
+	return c.gcServiceID + tag
 }

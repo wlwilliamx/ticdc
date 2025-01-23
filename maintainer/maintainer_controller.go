@@ -67,7 +67,7 @@ type Controller struct {
 
 func NewController(changefeedID common.ChangeFeedID,
 	checkpointTs uint64,
-	pdapi pdutil.PDAPIClient,
+	pdAPIClient pdutil.PDAPIClient,
 	tsoClient replica.TSOClient,
 	regionCache split.RegionCache,
 	taskScheduler threadpool.ThreadPool,
@@ -80,7 +80,7 @@ func NewController(changefeedID common.ChangeFeedID,
 	var splitter *split.Splitter
 	if cfConfig != nil && cfConfig.Scheduler.EnableTableAcrossNodes {
 		enableTableAcrossNodes = true
-		splitter = split.NewSplitter(changefeedID, pdapi, regionCache, cfConfig.Scheduler)
+		splitter = split.NewSplitter(changefeedID, pdAPIClient, regionCache, cfConfig.Scheduler)
 	}
 	replicaSetDB := replica.NewReplicaSetDB(changefeedID, ddlSpan, enableTableAcrossNodes)
 	nodeManager := appcontext.GetService[*watcher.NodeManager](watcher.NodeManagerName)

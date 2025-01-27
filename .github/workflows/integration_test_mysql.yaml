@@ -631,6 +631,11 @@ jobs:
           pwd && ls -l bin/ && ls -l tools/bin/
           export TICDC_NEWARCH=true && make integration_test CASE=fail_over_ddl_mix 
 
+      - name: Test fail_over_ddl_mix_with_syncpoint
+        run: |
+          pwd && ls -l bin/ && ls -l tools/bin/
+          export TICDC_NEWARCH=true && make integration_test CASE=fail_over_ddl_mix_with_syncpoint 
+
       - name: Upload test logs
         if: always()
         uses: ./.github/actions/upload-test-logs

@@ -7,8 +7,9 @@
 #             drop table, and then recover table
 #             truncate table
 # 3. Simultaneously we exec the dmls, continues insert data to these 10 tables.
-# 4. Furthermore, we will randomly kill the ticdc server, and then restart it.
-# 5. We execute these threads for a time, and then check the data consistency between the upstream and downstream.
+# 4. Besides, we enable the syncpoint.
+# 5. Furthermore, we will randomly kill the ticdc server, and then restart it.
+# 6. We execute these threads for a time, and then check the data consistency between the upstream and downstream.
 
 set -eu
 
@@ -34,7 +35,7 @@ function prepare() {
 
 	TOPIC_NAME="ticdc-failover-ddl-test-mix-$RANDOM"
 	SINK_URI="mysql://root@127.0.0.1:3306/"
-	run_cdc_cli changefeed create --start-ts=$start_ts --sink-uri="$SINK_URI" -c "test"
+	run_cdc_cli changefeed create --start-ts=$start_ts --sink-uri="$SINK_URI" -c "test" --config="$CUR/conf/changefeed.toml"
 }
 
 function create_tables() {

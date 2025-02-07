@@ -62,22 +62,6 @@ func GetTableRange(tableID int64) (startKey, endKey []byte) {
 	return start, end
 }
 
-// GetAllDDLSpan return all cdc interested spans for DDL.
-func GetAllDDLSpan() []tablepb.Span {
-	spans := make([]tablepb.Span, 0, 2)
-	start, end := GetTableRange(JobTableID)
-	spans = append(spans, tablepb.Span{
-		StartKey: ToComparableKey(start),
-		EndKey:   ToComparableKey(end),
-	})
-	start, end = GetTableRange(JobHistoryID)
-	spans = append(spans, tablepb.Span{
-		StartKey: ToComparableKey(start),
-		EndKey:   ToComparableKey(end),
-	})
-	return spans
-}
-
 // KeyInSpan check if k in the span range.
 func KeyInSpan(k tablepb.Key, span tablepb.Span) bool {
 	if StartCompare(k, span.StartKey) >= 0 &&

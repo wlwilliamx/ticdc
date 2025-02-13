@@ -264,5 +264,6 @@ type SinkType int
 const (
 	MysqlSinkType SinkType = iota
 	KafkaSinkType
+	CloudStorageSinkType
 	BlackHoleSinkType
 )

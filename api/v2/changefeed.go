@@ -135,6 +135,15 @@ func (h *OpenAPIV2) createChangefeed(c *gin.Context) {
 
 	// fill replicaConfig
 	replicaCfg := cfg.ReplicaConfig.ToInternalReplicaConfig()
+
+	// verify changefeed filter
+	_, err = filter.NewFilter(replicaCfg.Filter, "", replicaCfg.CaseSensitive, replicaCfg.ForceReplicate)
+	if err != nil {
+		_ = c.Error(errors.ErrChangefeedUpdateRefused.
+			GenWithStackByArgs(errors.Cause(err).Error()))
+		return
+	}
+
 	// verify replicaConfig
 	sinkURIParsed, err := url.Parse(cfg.SinkURI)
 	if err != nil {
@@ -205,7 +214,7 @@ func (h *OpenAPIV2) createChangefeed(c *gin.Context) {
 		zap.String("state", string(info.State)),
 		zap.String("changefeedInfo", info.String()))
 
-	c.JSON(http.StatusOK, toAPIModel(
+	c.JSON(http.StatusOK, cfInfoToAPIModel(
 		info,
 		&config.ChangeFeedStatus{
 			CheckpointTs: info.StartTs,
@@ -300,11 +309,11 @@ func (h *OpenAPIV2) getChangeFeed(c *gin.Context) {
 	}
 
 	taskStatus := make([]model.CaptureTaskStatus, 0)
-	detail := toAPIModel(cfInfo, status, taskStatus)
+	detail := cfInfoToAPIModel(cfInfo, status, taskStatus)
 	c.JSON(http.StatusOK, detail)
 }
 
-func toAPIModel(
+func cfInfoToAPIModel(
 	info *config.ChangeFeedInfo,
 	status *config.ChangeFeedStatus,
 	taskStatus []model.CaptureTaskStatus,
@@ -627,7 +636,7 @@ func (h *OpenAPIV2) updateChangefeed(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, toAPIModel(oldCfInfo, status, nil))
+	c.JSON(http.StatusOK, cfInfoToAPIModel(oldCfInfo, status, nil))
 }
 
 // verifyResumeChangefeedConfig verifies the changefeed config before resuming a changefeed
@@ -751,7 +760,7 @@ func (h *OpenAPIV2) moveTable(c *gin.Context) {
 // listTables lists all tables in a changefeed
 // Usage:
 // curl -X GET http://127.0.0.1:8300/api/v2/changefeeds/changefeed-test1/tables
-// Note: This api is for inner test use, not public use. It may be removed in the future.
+// Note: This api is for inner test use, not public use. It may be changed or removed in the future.
 func (h *OpenAPIV2) listTables(c *gin.Context) {
 	changefeedDisplayName := common.NewChangeFeedDisplayName(c.Param(api.APIOpVarChangefeedID), getNamespaceValueWithDefault(c))
 	if err := model.ValidateChangefeedID(changefeedDisplayName.Name); err != nil {
@@ -874,6 +883,43 @@ func (h *OpenAPIV2) getDispatcherCount(c *gin.Context) {
 
 	number := maintainer.GetDispatcherCount()
 	c.JSON(http.StatusOK, &DispatcherCount{Count: number})
+}
+
+// syncState returns the sync state of a changefeed.
+// Usage:
+// curl -X GET http://127.0.0.1:8300/api/v2/changefeeds/changefeed-test1/synced
+// Note: This feature has not been implemented yet. It will be implemented in the future.
+// Currently, it always returns false.
+func (h *OpenAPIV2) syncState(c *gin.Context) {
+	changefeedDisplayName := common.NewChangeFeedDisplayName(c.Param(api.APIOpVarChangefeedID), getNamespaceValueWithDefault(c))
+	co, err := h.server.GetCoordinator()
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+
+	_, status, err := co.GetChangefeed(c, changefeedDisplayName)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+
+	// get time from pd
+	ctx := c.Request.Context()
+	ts, _, err := h.server.GetPdClient().GetTS(ctx)
+	if err != nil {
+		_ = c.Error(errors.ErrPDEtcdAPIError.GenWithStackByArgs("fail to get ts from pd client"))
+		return
+	}
+
+	c.JSON(http.StatusOK, SyncedStatus{
+		Synced:           false,
+		SinkCheckpointTs: model.JSONTime(oracle.GetTimeFromTS(status.CheckpointTs)),
+		PullerResolvedTs: model.JSONTime(oracle.GetTimeFromTS(status.CheckpointTs)),
+		LastSyncedTs:     model.JSONTime(oracle.GetTimeFromTS(status.CheckpointTs)),
+		NowTs:            model.JSONTime(time.Unix(ts/1e3, 0)),
+		Info:             "The data syncing is not finished, please wait",
+	})
 }
 
 func getNamespaceValueWithDefault(c *gin.Context) string {

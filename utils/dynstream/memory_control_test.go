@@ -178,36 +178,36 @@ func TestShouldPausePath(t *testing.T) {
 	areaMemStat := newAreaMemStat(path.area, mc, settings, nil)
 	path.areaMemStat = areaMemStat
 
-	path.pendingSize.Store(uint32(10))
-	pause, resume := path.areaMemStat.shouldPausePath(path)
+	path.pendingSize.Store(int64(10))
+	pause, resume, _ := path.areaMemStat.shouldPausePath(path)
 	require.False(t, pause)
 	require.False(t, resume)
 
-	path.pendingSize.Store(uint32(15))
-	pause, resume = path.areaMemStat.shouldPausePath(path)
+	path.pendingSize.Store(int64(15))
+	pause, resume, _ = path.areaMemStat.shouldPausePath(path)
 	require.False(t, pause)
 	require.False(t, resume)
 
-	path.pendingSize.Store(uint32(20))
-	pause, resume = path.areaMemStat.shouldPausePath(path)
+	path.pendingSize.Store(int64(20))
+	pause, resume, _ = path.areaMemStat.shouldPausePath(path)
 	require.True(t, pause)
 	path.paused.Store(true)
 	require.False(t, resume)
 
-	path.pendingSize.Store(uint32(15))
-	pause, resume = path.areaMemStat.shouldPausePath(path)
+	path.pendingSize.Store(int64(15))
+	pause, resume, _ = path.areaMemStat.shouldPausePath(path)
 	require.False(t, pause)
 	require.False(t, resume)
 
-	path.pendingSize.Store(uint32(9))
-	pause, resume = path.areaMemStat.shouldPausePath(path)
+	path.pendingSize.Store(int64(9))
+	pause, resume, _ = path.areaMemStat.shouldPausePath(path)
 	require.False(t, pause)
 
 	require.True(t, resume)
 	path.paused.Store(false)
 
-	path.pendingSize.Store(uint32(15))
-	pause, resume = path.areaMemStat.shouldPausePath(path)
+	path.pendingSize.Store(int64(15))
+	pause, resume, _ = path.areaMemStat.shouldPausePath(path)
 	require.False(t, pause)
 	require.False(t, resume)
 }
@@ -221,34 +221,34 @@ func TestShouldPauseArea(t *testing.T) {
 	areaMemStat := newAreaMemStat(path.area, mc, settings, nil)
 
 	areaMemStat.totalPendingSize.Store(int64(10))
-	pause, resume := areaMemStat.shouldPauseArea()
+	pause, resume, _ := areaMemStat.shouldPauseArea()
 	require.False(t, pause)
 	require.False(t, resume)
 
 	areaMemStat.totalPendingSize.Store(int64(60))
-	pause, resume = areaMemStat.shouldPauseArea()
+	pause, resume, _ = areaMemStat.shouldPauseArea()
 	require.False(t, pause)
 	require.False(t, resume)
 
 	areaMemStat.totalPendingSize.Store(int64(80))
-	pause, resume = areaMemStat.shouldPauseArea()
+	pause, resume, _ = areaMemStat.shouldPauseArea()
 	require.True(t, pause)
 	areaMemStat.paused.Store(true)
 	require.False(t, resume)
 
 	areaMemStat.totalPendingSize.Store(int64(60))
-	pause, resume = areaMemStat.shouldPauseArea()
+	pause, resume, _ = areaMemStat.shouldPauseArea()
 	require.False(t, pause)
 	require.False(t, resume)
 
 	areaMemStat.totalPendingSize.Store(int64(49))
-	pause, resume = areaMemStat.shouldPauseArea()
+	pause, resume, _ = areaMemStat.shouldPauseArea()
 	require.False(t, pause)
 	require.True(t, resume)
 	areaMemStat.paused.Store(false)
 
 	areaMemStat.totalPendingSize.Store(int64(60))
-	pause, resume = areaMemStat.shouldPauseArea()
+	pause, resume, _ = areaMemStat.shouldPauseArea()
 	require.False(t, pause)
 	require.False(t, resume)
 }
@@ -285,22 +285,22 @@ func TestSetAreaSettings(t *testing.T) {
 
 func TestGetMetrics(t *testing.T) {
 	mc, path := setupTestComponents()
-	usedMemory, maxMemory := mc.getMetrics()
-	require.Equal(t, int64(0), usedMemory)
-	require.Equal(t, int64(0), maxMemory)
+	metrics := mc.getMetrics()
+	require.Equal(t, 0, len(metrics.AreaMemoryMetrics))
 
 	mc.addPathToArea(path, AreaSettings{
 		MaxPendingSize:   100,
 		FeedbackInterval: time.Second,
 	}, nil)
-	usedMemory, maxMemory = mc.getMetrics()
-	require.Equal(t, int64(0), usedMemory)
-	require.Equal(t, int64(100), maxMemory)
+	metrics = mc.getMetrics()
+	require.Equal(t, 1, len(metrics.AreaMemoryMetrics))
+	require.Equal(t, int64(0), metrics.AreaMemoryMetrics[0].usedMemory)
+	require.Equal(t, int64(100), metrics.AreaMemoryMetrics[0].maxMemory)
 
 	path.areaMemStat.totalPendingSize.Store(100)
-	usedMemory, maxMemory = mc.getMetrics()
-	require.Equal(t, int64(100), usedMemory)
-	require.Equal(t, int64(100), maxMemory)
+	metrics = mc.getMetrics()
+	require.Equal(t, int64(100), metrics.AreaMemoryMetrics[0].usedMemory)
+	require.Equal(t, int64(100), metrics.AreaMemoryMetrics[0].maxMemory)
 }
 
 func TestUpdateAreaPauseState(t *testing.T) {
@@ -362,18 +362,18 @@ func TestUpdatePathPauseState(t *testing.T) {
 	mc.addPathToArea(path, settings, feedbackChan)
 	areaMemStat := path.areaMemStat
 
-	path.pendingSize.Store(uint32(10))
+	path.pendingSize.Store(int64(10))
 	areaMemStat.updatePathPauseState(path)
 	require.False(t, path.paused.Load())
 
-	path.pendingSize.Store(uint32(60))
+	path.pendingSize.Store(int64(60))
 	areaMemStat.updatePathPauseState(path)
 	require.True(t, path.paused.Load())
 	fb := <-feedbackChan
 	require.Equal(t, PausePath, fb.FeedbackType)
 	require.Equal(t, path.area, fb.Area)
 
-	path.pendingSize.Store(uint32(9))
+	path.pendingSize.Store(int64(9))
 	areaMemStat.updatePathPauseState(path)
 	require.True(t, path.paused.Load())
 

@@ -11,7 +11,7 @@ group_num=${group#G}
 # This file is used for running heavy integration tests in CI pipelines.
 # If we implement a new test case, which is heavy, we should add it to this file.
 # If the new test case is light, please add it to run_light_it_in_ci.sh.
-# 
+#
 # Here are four groups of tests defined below, corresponding to four sink types: mysql, kafka, pulsar, and storage.
 # Please add the new test case to each group according to the sink type.
 # For example, the case "batch_add_table" should be added to all four groups, because it should be tested in all sink types.
@@ -168,14 +168,14 @@ storage_groups=(
 )
 
 case "$sink_type" in
-	mysql) groups=("${mysql_groups[@]}") ;;
-	kafka) groups=("${kafka_groups[@]}") ;;
-	pulsar) groups=("${pulsar_groups[@]}") ;;
-	storage) groups=("${storage_groups[@]}") ;;
-	*)
-		echo "Error: unknown sink type: ${sink_type}"
-		exit 1
-		;;
+mysql) groups=("${mysql_groups[@]}") ;;
+kafka) groups=("${kafka_groups[@]}") ;;
+pulsar) groups=("${pulsar_groups[@]}") ;;
+storage) groups=("${storage_groups[@]}") ;;
+*)
+	echo "Error: unknown sink type: ${sink_type}"
+	exit 1
+	;;
 esac
 
 if [[ $group_num =~ ^[0-9]+$ ]] && [[ -n ${groups[10#${group_num}]} ]]; then

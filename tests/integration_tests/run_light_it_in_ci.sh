@@ -167,6 +167,10 @@ storage_groups=(
 	''
 )
 
+# Source shared functions and check test coverage
+source "$CUR/_utils/check_coverage.sh"
+check_test_coverage "$CUR"
+
 case "$sink_type" in
 mysql) groups=("${mysql_groups[@]}") ;;
 kafka) groups=("${kafka_groups[@]}") ;;
@@ -177,6 +181,11 @@ storage) groups=("${storage_groups[@]}") ;;
 	exit 1
 	;;
 esac
+
+# Print debug information
+echo "Sink Type: ${sink_type}"
+echo "Group Name: ${group}"
+echo "Group Number (parsed): ${group_num}"
 
 if [[ $group_num =~ ^[0-9]+$ ]] && [[ -n ${groups[10#${group_num}]} ]]; then
 	# force use decimal index

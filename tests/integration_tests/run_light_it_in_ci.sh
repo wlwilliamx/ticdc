@@ -29,7 +29,7 @@ group_num=${group#G}
 
 mysql_groups=(
 	# G00
-	'chartset_gbk changefeed_finish sql_mode changefeed_reconstruct'
+	'charset_gbk changefeed_finish sql_mode changefeed_reconstruct'
 	# G01
 	'common_1 foreign_key generate_column many_ok_or_uk drop_many_tables'
 	# G02

@@ -223,6 +223,7 @@ func parseConfigFlagFromOSArgs() string {
 			serverConfigFilePath = os.Args[i+2]
 		}
 	}
+	log.Info("parse config file path from os.Args", zap.String("config", serverConfigFilePath))
 
 	// If the command is `cdc cli changefeed`, means it's not a server config file.
 	if slices.Contains(os.Args, "cli") && slices.Contains(os.Args, "changefeed") {

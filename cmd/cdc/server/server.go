@@ -188,7 +188,7 @@ func (o *options) validate() error {
 	if len(o.pdEndpoints) == 0 {
 		return errors.ErrInvalidServerOption.GenWithStack("empty PD address")
 	}
-	log.Info("validate pd address", zap.Strings("pd", o.pdEndpoints), zap.Int("pd count", len(o.pdEndpoints)))
+	log.Info("validate pd address", zap.Strings("pd", o.pdEndpoints), zap.Int("pdCount", len(o.pdEndpoints)))
 	for _, ep := range o.pdEndpoints {
 		// NOTICE: The configuration used here is the one that has been completed,
 		// as it may be configured by the configuration file.

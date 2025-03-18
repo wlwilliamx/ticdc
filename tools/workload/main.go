@@ -35,6 +35,7 @@ import (
 	pbank "workload/schema/bank"
 	pbank2 "workload/schema/bank2"
 	"workload/schema/bankupdate"
+	pcrawler "workload/schema/crawler"
 	"workload/schema/largerow"
 	"workload/schema/shop"
 	psysbench "workload/schema/sysbench"
@@ -89,6 +90,7 @@ const (
 	largeRow = "large_row"
 	shopItem = "shop_item"
 	uuu      = "uuu"
+	crawler  = "crawler"
 	// for gf case, at most support table count = 2. Here only 2 tables in this cases.
 	// And each insert sql contains 200 batch, each update sql only contains 1 batch.
 	bank2      = "bank2"
@@ -109,7 +111,7 @@ func init() {
 	flag.Float64Var(&percentageForUpdate, "percentage-for-update", 0, "percentage for update: [0, 1.0]")
 	flag.BoolVar(&skipCreateTable, "skip-create-table", false, "do not create tables")
 	flag.StringVar(&action, "action", "prepare", "action of the workload: [prepare, insert, update, delete, write, cleanup]")
-	flag.StringVar(&workloadType, "workload-type", "sysbench", "workload type: [bank, sysbench, large_row, shop_item, uuu, bank2, bank_update]")
+	flag.StringVar(&workloadType, "workload-type", "sysbench", "workload type: [bank, sysbench, large_row, shop_item, uuu, bank2, bank_update, crawler]")
 	flag.StringVar(&dbHost, "database-host", "127.0.0.1", "database host")
 	flag.StringVar(&dbUser, "database-user", "root", "database user")
 	flag.StringVar(&dbPassword, "database-password", "", "database password")
@@ -234,6 +236,8 @@ func createWorkload() schema.Workload {
 		workload = shop.NewShopItemWorkload(totalRowCount, rowSize)
 	case uuu:
 		workload = puuu.NewUUUWorkload()
+	case crawler:
+		workload = pcrawler.NewCrawlerWorkload()
 	case bank2:
 		workload = pbank2.NewBank2Workload()
 	case bankUpdate:
@@ -417,10 +421,12 @@ func doUpdate(conn *sql.Conn, workload schema.Workload, input chan updateTask) {
 			updateSql, values := workload.(*pbank2.Bank2Workload).BuildUpdateSqlWithValues(task.UpdateOption)
 			res, err = executeWithValues(conn, updateSql, workload, task.UpdateOption.Table, values)
 		} else {
-			updateSql = workload.BuildUpdateSql(task.UpdateOption)
+			updateSql := workload.BuildUpdateSql(task.UpdateOption)
+			if updateSql == "" {
+				continue
+			}
 			res, err = execute(conn, updateSql, workload, task.Table)
 		}
-
 		if err != nil {
 			plog.Info("update error", zap.Error(err), zap.String("sql", updateSql[:20]))
 			errCount.Add(1)

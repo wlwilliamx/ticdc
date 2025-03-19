@@ -249,20 +249,20 @@ func isNewArchEnabledByConfig(serverConfigFilePath string) bool {
 func isNewArchEnabled(o *options) bool {
 	newarch := o.serverConfig.Newarch
 	if newarch {
-		log.Info("Set newarch from command line")
+		log.Debug("Set newarch from command line")
 		return newarch
 	}
 
 	newarch = os.Getenv("TICDC_NEWARCH") == "true"
 	if newarch {
-		log.Info("Set newarch from environment variable")
+		log.Debug("Set newarch from environment variable")
 		return newarch
 	}
 
 	serverConfigFilePath := parseConfigFlagFromOSArgs()
 	newarch = isNewArchEnabledByConfig(serverConfigFilePath)
 	if newarch {
-		log.Info("Set newarch from config file")
+		log.Debug("Set newarch from config file")
 	}
 	return newarch
 }

@@ -28,7 +28,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// CaptureTopologyCfg stores the information of the capture topology.
+// NodeTopologyCfg stores the information of the capture topology.
 type NodeTopologyCfg struct {
 	*node.Info
 

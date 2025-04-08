@@ -27,7 +27,9 @@ group_num=${group#G}
 # For pulsar: https://github.com/PingCAP-QE/ci/blob/main/pipelines/pingcap/ticdc/latest/pull_cdc_pulsar_integration_light.groovy
 # For storage: https://github.com/PingCAP-QE/ci/blob/main/pipelines/pingcap/ticdc/latest/pull_cdc_storage_integration_light.groovy
 
-# 4 CPU cores will be allocated to run each mysql light group in CI pipelines.
+# Resource allocation for mysql light integration tests in CI pipelines:
+# https://github.com/PingCAP-QE/ci/blob/main/pipelines/pingcap/ticdc/latest/pod-pull_cdc_mysql_integration_light.yaml
+# 4 CPU, 16 Gi memory.
 mysql_groups=(
 	# G00
 	'charset_gbk changefeed_finish sql_mode changefeed_reconstruct fail_over_ddl_A'
@@ -63,6 +65,9 @@ mysql_groups=(
 	'split_region changefeed_resume_with_checkpoint_ts autorandom gc_safepoint'
 )
 
+# Resource allocation for kafka light integration tests in CI pipelines:
+# https://github.com/PingCAP-QE/ci/blob/main/pipelines/pingcap/ticdc/latest/pod-pull_cdc_kafka_integration_light.yaml
+# 6 CPU, 16 Gi memory.
 kafka_groups=(
 	# G00
 	'canal_json_basic'
@@ -75,9 +80,9 @@ kafka_groups=(
 	# G04
 	'canal_json_storage_basic'
 	# G05
-	''
+	'open_protocol_claim_check'
 	# G06
-	''
+	'open_protocol_handle_key_only'
 	# G07
 	'kafka_big_messages'
 	# G08
@@ -93,11 +98,14 @@ kafka_groups=(
 	# G13
 	'multi_topics_v2'
 	# G14
-	'open_protocol_claim_check'
+	''
 	# G15
-	'open_protocol_handle_key_only'
+	''
 )
 
+# Resource allocation for pulsar light integration tests in CI pipelines:
+# https://github.com/PingCAP-QE/ci/blob/main/pipelines/pingcap/ticdc/latest/pod-pull_cdc_pulsar_integration_light.yaml
+# 6 CPU, 32 Gi memory.
 pulsar_groups=(
 	# G00
 	'canal_json_basic'
@@ -133,6 +141,9 @@ pulsar_groups=(
 	''
 )
 
+# Resource allocation for storage light integration tests in CI pipelines:
+# https://github.com/PingCAP-QE/ci/blob/main/pipelines/pingcap/ticdc/latest/pod-pull_cdc_storage_integration_light.yaml
+# 6 CPU, 16 Gi memory.
 storage_groups=(
 	# G00
 	'lossy_ddl'

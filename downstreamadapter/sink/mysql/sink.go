@@ -281,6 +281,8 @@ func (s *sink) Close(removeChangefeed bool) {
 				zap.Any("changefeed", s.changefeedID.String()), zap.Error(err))
 		}
 	}
+
+	s.conflictDetector.Close()
 	s.ddlWriter.Close()
 	for _, w := range s.dmlWriter {
 		w.Close()

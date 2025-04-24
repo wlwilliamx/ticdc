@@ -245,6 +245,14 @@ var (
 		"date separator in storage sink is invalid",
 		errors.RFCCodeText("CDC:ErrStorageSinkInvalidDateSeparator"),
 	)
+	ErrCSVEncodeFailed = errors.Normalize(
+		"csv encode failed",
+		errors.RFCCodeText("CDC:ErrCSVEncodeFailed"),
+	)
+	ErrCSVDecodeFailed = errors.Normalize(
+		"csv decode failed",
+		errors.RFCCodeText("CDC:ErrCSVDecodeFailed"),
+	)
 	ErrDebeziumEncodeFailed = errors.Normalize(
 		"debezium encode failed",
 		errors.RFCCodeText("CDC:ErrDebeziumEncodeFailed"),
@@ -549,6 +557,10 @@ var (
 		"cdc met unexpected error: %s",
 		errors.RFCCodeText("CDC:ErrUnexpected"),
 	)
+	ErrGetDiskInfo = errors.Normalize(
+		"get dir disk info failed",
+		errors.RFCCodeText("CDC:ErrGetDiskInfo"),
+	)
 	ErrLoadTimezone = errors.Normalize(
 		"load timezone",
 		errors.RFCCodeText("CDC:ErrLoadTimezone"),
@@ -624,7 +636,10 @@ var (
 		"failed to create external storage",
 		errors.RFCCodeText("CDC:ErrFailToCreateExternalStorage"),
 	)
-
+	// retry error
+	ErrReachMaxTry = errors.Normalize("reach maximum try: %s, error: %s",
+		errors.RFCCodeText("CDC:ErrReachMaxTry"),
+	)
 	// tcp server error
 	ErrTCPServerClosed = errors.Normalize("The TCP server has been closed",
 		errors.RFCCodeText("CDC:ErrTCPServerClosed"),

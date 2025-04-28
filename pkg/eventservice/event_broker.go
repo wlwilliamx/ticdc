@@ -17,6 +17,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -47,7 +48,14 @@ const (
 
 	defaultMaxBatchSize            = 128
 	defaultFlushResolvedTsInterval = 25 * time.Millisecond
+
+	// Limit the number of transactions that can be scanned in a single scan task.
+	singleScanTxnLimit = 256 // 256 transactions
 )
+
+// Sink manager schedules table tasks based on lag. Limit the max task range
+// can be helpful to reduce changefeed latency for large initial data.
+var maxTaskTimeRange = 15 * time.Minute
 
 var (
 	metricEventServiceSendEventDuration   = metrics.EventServiceSendEventDuration.WithLabelValues("txn")
@@ -391,6 +399,17 @@ func (c *eventBroker) checkNeedScan(task scanTask, mustCheck bool) (bool, common
 		return false, common.DataRange{}
 	}
 
+	// Adjust the data range to avoid the time range of a task exceeds maxTaskTimeRange.
+	upperPhs := oracle.GetTimeFromTS(task.eventStoreResolvedTs.Load())
+	lowerPhs := oracle.GetTimeFromTS(task.sentResolvedTs.Load())
+
+	// The time range of a task should not exceed maxTaskTimeRange.
+	// This would help for reduce changefeed latency.
+	if upperPhs.Sub(lowerPhs) > maxTaskTimeRange {
+		newUpperCommitTs := oracle.GoTimeToTS(lowerPhs.Add(maxTaskTimeRange))
+		dataRange.EndTs = newUpperCommitTs
+	}
+
 	return true, dataRange
 }
 
@@ -526,6 +545,7 @@ func (c *eventBroker) doScan(ctx context.Context, task scanTask, idx int) {
 			metricEventStoreOutputKv.Add(float64(eventCount))
 		}
 		metricEventBrokerScanTaskCount.Inc()
+		metrics.EventServiceScanDuration.Observe(time.Since(start).Seconds())
 	}()
 
 	lastSentDMLCommitTs := uint64(0)
@@ -561,6 +581,7 @@ func (c *eventBroker) doScan(ctx context.Context, task scanTask, idx int) {
 			c.sendDDL(ctx, remoteID, ddlEvents[0], task)
 			ddlEvents = ddlEvents[1:]
 		}
+
 		dml.Seq = task.seq.Add(1)
 		c.emitSyncPointEventIfNeeded(dml.CommitTs, task, remoteID)
 		c.getMessageCh(task.messageWorkerIndex) <- newWrapDMLEvent(remoteID, dml, task.getEventSenderState())
@@ -569,23 +590,17 @@ func (c *eventBroker) doScan(ctx context.Context, task scanTask, idx int) {
 		return true
 	}
 
+	sendWaterMark := func() {
+		if lastSentDMLCommitTs != 0 {
+			task.updateSentResolvedTs(lastSentDMLCommitTs)
+			c.sendWatermark(remoteID, task, lastSentDMLCommitTs)
+		}
+	}
+
 	// 3. Send the events to the dispatcher.
 	var dml *pevent.DMLEvent
+	dmlCount := 0
 	for {
-
-		if !task.IsRunning() {
-			log.Info("The dispatcher is not running, skip the following scan",
-				zap.Uint64("clusterID", task.info.GetClusterID()),
-				zap.String("changefeed", task.info.GetChangefeedID().String()),
-				zap.String("dispatcher", task.id.String()),
-				zap.Uint64("taskStartTs", dataRange.StartTs),
-				zap.Uint64("taskEndTs", dataRange.EndTs),
-				zap.Uint64("lastSentResolvedTs", task.sentResolvedTs.Load()),
-				zap.Uint64("lastSentDMLCommitTs", lastSentDMLCommitTs),
-				zap.Int("workerIndex", idx),
-			)
-			return
-		}
 		// Node: The first event of the txn must return isNewTxn as true.
 		e, isNewTxn, err := iter.Next()
 		if err != nil {
@@ -599,7 +614,6 @@ func (c *eventBroker) doScan(ctx context.Context, task scanTask, idx int) {
 			}
 
 			sendRemainingDDLEvents()
-			metrics.EventServiceScanDuration.Observe(time.Since(start).Seconds())
 			return
 		}
 
@@ -614,7 +628,6 @@ func (c *eventBroker) doScan(ctx context.Context, task scanTask, idx int) {
 			if !ok {
 				return
 			}
-
 			tableID := task.info.GetTableSpan().TableID
 			tableInfo, err := c.schemaStore.GetTableInfo(tableID, e.CRTs-1)
 			if err != nil {
@@ -632,7 +645,16 @@ func (c *eventBroker) doScan(ctx context.Context, task scanTask, idx int) {
 				}
 				log.Panic("get table info failed, unknown reason", zap.Error(err))
 			}
+
+			// If the number of transactions that can be scanned in a single scan task is greater than the limit,
+			// we need to send a watermark to the dispatcher and stop the scan.
+			if dmlCount >= singleScanTxnLimit && e.CRTs > lastSentDMLCommitTs {
+				sendWaterMark()
+				return
+			}
+
 			dml = pevent.NewDMLEvent(dispatcherID, tableID, e.StartTs, e.CRTs, tableInfo)
+			dmlCount++
 		}
 		if err = dml.AppendRow(e, c.mounter.DecodeToChunk); err != nil {
 			log.Panic("append row failed", zap.Error(err))
@@ -747,14 +769,15 @@ func (c *eventBroker) sendMsg(ctx context.Context, tMsg *messaging.TargetMessage
 		// Send the message to the dispatcher.
 		err := c.msgSender.SendEvent(tMsg)
 		if err != nil {
-			appErr, ok := err.(*apperror.AppError)
-			log.Info("fizz send msg failed", zap.Error(err), zap.Any("tMsg", tMsg))
-			time.Sleep(congestedRetryInterval)
-			if ok && appErr.Type == apperror.ErrorTypeMessageCongested {
+			_, ok := err.(apperror.AppError)
+			log.Debug("send msg failed, retry it later", zap.Error(err), zap.Any("tMsg", tMsg), zap.Bool("castOk", ok))
+			if strings.Contains(err.Error(), "congested") {
 				log.Debug("send message failed since the message is congested, retry it laster", zap.Error(err))
 				// Wait for a while and retry to avoid the dropped message flood.
+				time.Sleep(congestedRetryInterval)
 				continue
 			} else {
+				log.Info("send message failed, drop it", zap.Error(err), zap.Any("tMsg", tMsg))
 				// Drop the message, and return.
 				// If the dispatcher finds the events are not continuous, it will send a reset message.
 				// And the broker will send the missed events to the dispatcher again.

@@ -331,6 +331,7 @@ func (pi *pathInfo[A, P, T, D, H]) appendEvent(event eventWrap[A, P, T, D, H], h
 		return false
 	} else {
 		pi.pendingQueue.PushBack(event)
+		pi.updatePendingSize(int64(event.eventSize))
 		return true
 	}
 }

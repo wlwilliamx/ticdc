@@ -1,10 +1,10 @@
 #!/bin/bash
-# This test is aimed to test the ddl execution for split tables when the table is scheduled to be moved.
-# 1. we start three TiCDC servers, and create a table with some data and multiple regions.
+# This test is aimed to test the ddl execution for split tables when the table is sometimes merging, sometimes splitting.
+# 1. we start two TiCDC servers, and create a table with some data and multiple regions.
 # 2. we enable the split table param, and start a changefeed.
 # 2. one thread we execute ddl randomly(including add column, drop column, rename table, add index, drop index)
 # 3. one thread we execute dmls, and insert data to these table.
-# 4. one thread we randomly move the table(all related dispatchers) to other nodes.
+# 4. one thread we randomly merge table and then split table.
 # finally, we check the data consistency between the upstream and downstream.
 
 set -eu
@@ -29,7 +29,6 @@ function prepare() {
 	export GO_FAILPOINTS='github.com/pingcap/ticdc/maintainer/scheduler/StopBalanceScheduler=return(true);github.com/pingcap/ticdc/maintainer/scheduler/StopSplitScheduler=return(true)'
 	run_cdc_server --workdir $WORK_DIR --binary $CDC_BINARY --logsuffix "0" --addr "127.0.0.1:8300"
 	run_cdc_server --workdir $WORK_DIR --binary $CDC_BINARY --logsuffix "1" --addr "127.0.0.1:8301"
-	run_cdc_server --workdir $WORK_DIR --binary $CDC_BINARY --logsuffix "2" --addr "127.0.0.1:8302"
 
 	run_sql_file $CUR/data/pre.sql ${UP_TIDB_HOST} ${UP_TIDB_PORT}
 
@@ -76,16 +75,16 @@ function execute_dml() {
 	done
 }
 
-function move_split_table() {
+function merge_and_split_table() {
 	while true; do
 		table_num=$((RANDOM % 5 + 1))
 		table_name="table_$table_num"
-		port=$((RANDOM % 3 + 8300))
 
 		# move table to a random node
 		table_id=$(get_table_id "test" "$table_name")
-		move_split_table_with_retry "127.0.0.1:$port" $table_id "test" 10 || true
-		sleep 1
+		merge_table_with_retry $table_id "test" 10 || true
+		sleep 10
+		split_table_with_retry $table_id "test" 10 || true
 	done
 }
 
@@ -95,7 +94,6 @@ main() {
 	execute_ddls &
 	NORMAL_TABLE_DDL_PID=$!
 
-	# do execute dml for 100 tables, and store the pid for each thread
 	declare -a pids=()
 
 	for i in {1..5}; do
@@ -103,12 +101,12 @@ main() {
 		pids+=("$!")
 	done
 
-	move_split_table &
-	MOVE_TABLE_PID=$!
+	merge_and_split_table &
+	MERGE_AND_SPLIT_TABLE_PID=$!
 
 	sleep 500
 
-	kill -9 $NORMAL_TABLE_DDL_PID ${pids[@]} $MOVE_TABLE_PID
+	kill -9 $NORMAL_TABLE_DDL_PID ${pids[@]} $MERGE_AND_SPLIT_TABLE_PID
 
 	sleep 10
 

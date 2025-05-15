@@ -953,3 +953,15 @@ func (m *Maintainer) MoveSplitTable(tableId int64, targetNode node.ID) error {
 func (m *Maintainer) GetTables() []*replica.SpanReplication {
 	return m.controller.replicationDB.GetAllTasks()
 }
+
+// SplitTableByRegionCount split table based on region count
+// it can split the table whether the table have one dispatcher or multiple dispatchers
+func (m *Maintainer) SplitTableByRegionCount(tableId int64) error {
+	return m.controller.SplitTableByRegionCount(tableId)
+}
+
+// MergeTable merge two dispatchers in this table into one dispatcher,
+// so after merge table, the table may also have multiple dispatchers
+func (m *Maintainer) MergeTable(tableId int64) error {
+	return m.controller.MergeTable(tableId)
+}

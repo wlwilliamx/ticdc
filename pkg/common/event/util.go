@@ -22,8 +22,6 @@ import (
 	"github.com/pingcap/log"
 	"github.com/pingcap/ticdc/pkg/common"
 	"github.com/pingcap/ticdc/pkg/config"
-	// NOTE: Do not remove the `test_driver` import.
-	// For details, refer to: https://github.com/pingcap/parser/issues/43
 	"github.com/pingcap/ticdc/pkg/errors"
 	ticonfig "github.com/pingcap/tidb/pkg/config"
 	tiddl "github.com/pingcap/tidb/pkg/ddl"
@@ -34,6 +32,8 @@ import (
 	"github.com/pingcap/tidb/pkg/parser"
 	"github.com/pingcap/tidb/pkg/parser/format"
 	pmodel "github.com/pingcap/tidb/pkg/parser/model"
+	// NOTE: Do not remove the `test_driver` import.
+	// For details, refer to: https://github.com/pingcap/parser/issues/43
 	_ "github.com/pingcap/tidb/pkg/parser/test_driver"
 	"github.com/pingcap/tidb/pkg/session"
 	"github.com/pingcap/tidb/pkg/store/mockstore"
@@ -204,26 +204,46 @@ func (s *EventTestHelper) DDL2Event(ddl string) *DDLEvent {
 	}
 }
 
+func (s *EventTestHelper) DML2BatchEvent(schema, table string, dmls ...string) *BatchDMLEvent {
+	key := toTableInfosKey(schema, table)
+	log.Info("dml2batchEvent", zap.String("key", key))
+	tableInfo, ok := s.tableInfos[key]
+	require.True(s.t, ok)
+	dmlEvent := new(BatchDMLEvent)
+	did := common.NewDispatcherID()
+	ts := tableInfo.UpdateTS()
+	for _, dml := range dmls {
+		dmlEvent.AppendDMLEvent(did, tableInfo.TableName.TableID, ts-1, ts+1, tableInfo)
+		rawKvs := s.DML2RawKv(schema, table, ts, dml)
+		for _, rawKV := range rawKvs {
+			err := dmlEvent.AppendRow(rawKV, s.mounter.DecodeToChunk)
+			require.NoError(s.t, err)
+		}
+	}
+	return dmlEvent
+}
+
 // DML2Event execute the dml(s) and return the corresponding DMLEvent.
 // Note:
 // 1. It dose not support `delete` since the key value cannot be found
 // after the query executed.
 // 2. You must execute create table statement before calling this function.
 // 3. You must set the preRow of the DMLEvent by yourself, since we can not get it from TiDB.
-func (s *EventTestHelper) DML2Event(schema, table string, dml ...string) *DMLEvent {
+func (s *EventTestHelper) DML2Event(schema, table string, dmls ...string) *DMLEvent {
 	key := toTableInfosKey(schema, table)
 	log.Info("dml2event", zap.String("key", key))
 	tableInfo, ok := s.tableInfos[key]
 	require.True(s.t, ok)
+	dmlEvent := new(BatchDMLEvent)
 	did := common.NewDispatcherID()
 	ts := tableInfo.UpdateTS()
-	dmlEvent := NewDMLEvent(did, tableInfo.TableName.TableID, ts-1, ts+1, tableInfo)
-	rawKvs := s.DML2RawKv(schema, table, ts, dml...)
+	dmlEvent.AppendDMLEvent(did, tableInfo.TableName.TableID, ts-1, ts+1, tableInfo)
+	rawKvs := s.DML2RawKv(schema, table, ts, dmls...)
 	for _, rawKV := range rawKvs {
 		err := dmlEvent.AppendRow(rawKV, s.mounter.DecodeToChunk)
 		require.NoError(s.t, err)
 	}
-	return dmlEvent
+	return dmlEvent.DMLEvents[0]
 }
 
 func (s *EventTestHelper) DML2UpdateEvent(schema, table string, dml ...string) *DMLEvent {
@@ -243,7 +263,7 @@ func (s *EventTestHelper) DML2UpdateEvent(schema, table string, dml ...string) *
 	require.True(s.t, ok)
 	did := common.NewDispatcherID()
 	ts := tableInfo.UpdateTS()
-	dmlEvent := NewDMLEvent(did, tableInfo.TableName.TableID, ts-1, ts+1, tableInfo)
+	dmlEvent := newDMLEvent(did, tableInfo.TableName.TableID, ts-1, ts+1, tableInfo)
 	rawKvs := s.DML2RawKv(schema, table, ts, dml...)
 
 	raw := &common.RawKVEntry{
@@ -356,4 +376,12 @@ func SplitQueries(queries string) ([]string, error) {
 	}
 
 	return res, nil
+}
+
+func BatchDML(dml *DMLEvent) *BatchDMLEvent {
+	return &BatchDMLEvent{
+		DMLEvents: []*DMLEvent{dml},
+		TableInfo: dml.TableInfo,
+		Rows:      dml.Rows,
+	}
 }

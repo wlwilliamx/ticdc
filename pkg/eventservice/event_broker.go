@@ -202,13 +202,16 @@ func newEventBroker(
 	return c
 }
 
-func (c *eventBroker) sendDML(ctx context.Context, remoteID node.ID, e *pevent.DMLEvent, d *dispatcherStat) {
+func (c *eventBroker) sendDML(ctx context.Context, remoteID node.ID, e *pevent.BatchDMLEvent, d *dispatcherStat) {
 	// Set sequence number for the event
-	e.Seq = d.seq.Add(1)
-	// Emit sync point event if needed
-	c.emitSyncPointEventIfNeeded(e.CommitTs, d, remoteID)
+	for _, dml := range e.DMLEvents {
+		dml.Seq = d.seq.Add(1)
+		// Emit sync point event if needed
+		c.emitSyncPointEventIfNeeded(dml.GetCommitTs(), d, remoteID)
+	}
+
 	// Send the DML event
-	c.getMessageCh(d.messageWorkerIndex) <- newWrapDMLEvent(remoteID, e, d.getEventSenderState())
+	c.getMessageCh(d.messageWorkerIndex) <- newWrapBatchDMLEvent(remoteID, e, d.getEventSenderState())
 	metricEventServiceSendKvCount.Add(float64(e.Len()))
 }
 
@@ -506,13 +509,18 @@ func (c *eventBroker) doScan(ctx context.Context, task scanTask, idx int) {
 
 	scanner := newEventScanner(c.eventStore, c.schemaStore, c.mounter)
 	sl := scanLimit{
-		MaxBytes: 1024 * 1024 * 8,         // 8 MB
+		MaxBytes: task.getCurrentScanLimitInBytes(),
 		Timeout:  time.Millisecond * 1000, // 1 Second
 	}
 
 	events, isBroken, err := scanner.Scan(ctx, task, dataRange, sl)
 	if err != nil {
 		log.Panic("scan events failed", zap.Error(err))
+	}
+
+	// If the task is not running, we don't send the events to the dispatcher.
+	if !task.isRunning.Load() {
+		return
 	}
 
 	for _, e := range events {
@@ -527,13 +535,13 @@ func (c *eventBroker) doScan(ctx context.Context, task scanTask, idx int) {
 		}
 
 		switch e.GetType() {
-		case pevent.TypeDMLEvent:
-			dml, ok := e.(*pevent.DMLEvent)
+		case pevent.TypeBatchDMLEvent:
+			dmls, ok := e.(*pevent.BatchDMLEvent)
 			if !ok {
 				log.Error("expect a DMLEvent, but got", zap.Any("event", e))
 				continue
 			}
-			c.sendDML(ctx, remoteID, dml, task)
+			c.sendDML(ctx, remoteID, dmls, task)
 		case pevent.TypeDDLEvent:
 			ddl, ok := e.(*pevent.DDLEvent)
 			if !ok {
@@ -697,6 +705,8 @@ func (c *eventBroker) updateMetrics(ctx context.Context) {
 			receivedMinResolvedTs := uint64(math.MaxUint64)
 			sentMinResolvedTs := uint64(math.MaxUint64)
 			dispatcherCount := 0
+			runningDispatcherCount := 0
+			pausedDispatcherCount := 0
 			var slowestDispatchers *dispatcherStat
 
 			c.dispatchers.Range(func(key, value any) bool {
@@ -713,6 +723,12 @@ func (c *eventBroker) updateMetrics(ctx context.Context) {
 
 				if slowestDispatchers == nil || slowestDispatchers.sentResolvedTs.Load() < watermark {
 					slowestDispatchers = dispatcher
+				}
+
+				if dispatcher.isRunning.Load() {
+					runningDispatcherCount++
+				} else {
+					pausedDispatcherCount++
 				}
 
 				return true
@@ -738,6 +754,10 @@ func (c *eventBroker) updateMetrics(ctx context.Context) {
 				pendingTaskCount += len(c.taskChan[i])
 			}
 			metricEventBrokerPendingScanTaskCount.Set(float64(pendingTaskCount))
+
+			metrics.EventServiceDispatcherStatusCount.WithLabelValues("running").Set(float64(runningDispatcherCount))
+			metrics.EventServiceDispatcherStatusCount.WithLabelValues("paused").Set(float64(pausedDispatcherCount))
+			metrics.EventServiceDispatcherStatusCount.WithLabelValues("total").Set(float64(dispatcherCount))
 
 			if slowestDispatchers != nil {
 				lag := time.Since(oracle.GetTimeFromTS(slowestDispatchers.sentResolvedTs.Load()))
@@ -971,6 +991,7 @@ func (c *eventBroker) pauseDispatcher(dispatcherInfo DispatcherInfo) {
 		zap.Uint64("sentResolvedTs", stat.sentResolvedTs.Load()),
 		zap.Uint64("seq", stat.seq.Load()))
 	stat.isRunning.Store(false)
+	stat.resetScanLimit()
 }
 
 func (c *eventBroker) resumeDispatcher(dispatcherInfo DispatcherInfo) {

@@ -23,7 +23,7 @@ import (
 	"github.com/pingcap/tidb-dashboard/util/distro"
 	"github.com/pingcap/tidb-dashboard/util/netutil"
 	"github.com/pingcap/tidb/pkg/domain/infosync"
-	"github.com/pingcap/tiflow/pkg/errors"
+	"github.com/pingcap/ticdc/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 )

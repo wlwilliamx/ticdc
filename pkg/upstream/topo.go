@@ -20,10 +20,10 @@ import (
 	"time"
 
 	"github.com/pingcap/log"
+	"github.com/pingcap/ticdc/pkg/errors"
 	"github.com/pingcap/tidb-dashboard/util/distro"
 	"github.com/pingcap/tidb-dashboard/util/netutil"
 	"github.com/pingcap/tidb/pkg/domain/infosync"
-	"github.com/pingcap/ticdc/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 )

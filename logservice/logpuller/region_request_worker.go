@@ -24,10 +24,10 @@ import (
 	"github.com/pingcap/kvproto/pkg/cdcpb"
 	"github.com/pingcap/kvproto/pkg/kvrpcpb"
 	"github.com/pingcap/log"
+	cerror "github.com/pingcap/ticdc/pkg/errors"
+	"github.com/pingcap/ticdc/pkg/security"
 	"github.com/pingcap/ticdc/pkg/util"
 	"github.com/pingcap/ticdc/pkg/version"
-	cerror "github.com/pingcap/tiflow/pkg/errors"
-	"github.com/pingcap/tiflow/pkg/security"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	grpcstatus "google.golang.org/grpc/status"
@@ -42,7 +42,7 @@ type regionFeedStates map[uint64]*regionFeedState
 type regionRequestWorker struct {
 	workerID uint64
 
-	client *SubscriptionClient
+	client *subscriptionClient
 
 	store *requestedStore
 
@@ -63,7 +63,7 @@ type regionRequestWorker struct {
 
 func newRegionRequestWorker(
 	ctx context.Context,
-	client *SubscriptionClient,
+	client *subscriptionClient,
 	credential *security.Credential,
 	g *errgroup.Group,
 	store *requestedStore,

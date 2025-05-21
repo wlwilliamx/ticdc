@@ -33,7 +33,7 @@ type dispatcherStat struct {
 
 	eventServiceInfo struct {
 		sync.RWMutex
-		// the server this dispatcher is currently connected to(except local event service)
+		// the server this dispatcher currently connects to(except local event service)
 		// if it is set to local event service id, ignore all messages from other event service
 		serverID node.ID
 		// whether has received ready signal from `serverID`
@@ -42,7 +42,7 @@ type dispatcherStat struct {
 		remoteCandidates []node.ID
 	}
 
-	// lastEventSeq is the sequence number of the last received DML/DDL event.
+	// lastEventSeq is the sequence number of the last received DML/DDL/Handshake event.
 	// It is used to ensure the order of events.
 	lastEventSeq atomic.Uint64
 
@@ -52,6 +52,9 @@ type dispatcherStat struct {
 
 	// The largest commit ts that has been sent to the dispatcher.
 	sentCommitTs atomic.Uint64
+
+	// tableInfo is the latest table info of the dispatcher's corresponding table.
+	tableInfo atomic.Value
 }
 
 func (d *dispatcherStat) reset() {
@@ -72,6 +75,7 @@ func (d *dispatcherStat) checkEventSeq(event dispatcher.DispatcherEvent, eventCo
 			log.Warn("Received an out-of-order event, reset the dispatcher",
 				zap.String("changefeedID", d.target.GetChangefeedID().ID().String()),
 				zap.Stringer("dispatcher", d.target.GetId()),
+				zap.Int("eventType", event.GetType()),
 				zap.Uint64("receivedSeq", event.GetSeq()),
 				zap.Uint64("expectedSeq", expectedSeq),
 				zap.Uint64("commitTs", event.GetCommitTs()))
@@ -88,9 +92,9 @@ func (d *dispatcherStat) shouldIgnoreDataEvent(event dispatcher.DispatcherEvent,
 		return true
 	}
 	if d.waitHandshake.Load() {
-		log.Warn("Receive event before handshake event, ignore it",
-			zap.String("changefeedID", d.target.GetChangefeedID().ID().String()),
-			zap.Stringer("dispatcher", d.target.GetId()))
+		// log.Warn("Receive event before handshake event, ignore it",
+		// 	zap.String("changefeedID", d.target.GetChangefeedID().ID().String()),
+		// 	zap.Stringer("dispatcher", d.target.GetId()))
 		return true
 	}
 	if !d.checkEventSeq(event, eventCollector) {
@@ -136,7 +140,13 @@ func (d *dispatcherStat) handleHandshakeEvent(event dispatcher.DispatcherEvent, 
 		return
 	}
 	d.waitHandshake.Store(false)
-	d.target.SetInitialTableInfo(event.Event.(*commonEvent.HandshakeEvent).TableInfo)
+}
+
+func (d *dispatcherStat) setTableInfo(tableInfo *common.TableInfo) {
+	if tableInfo == nil {
+		return
+	}
+	d.tableInfo.Store(tableInfo)
 }
 
 func (d *dispatcherStat) handleReadyEvent(event dispatcher.DispatcherEvent, eventCollector *EventCollector) {
@@ -186,6 +196,11 @@ func (d *dispatcherStat) handleReadyEvent(event dispatcher.DispatcherEvent, even
 				},
 			)
 		}
+		log.Info("received ready signal from local event service, prepare to reset the dispatcher",
+			zap.String("changefeedID", d.target.GetChangefeedID().ID().String()),
+			zap.Stringer("dispatcher", d.target.GetId()),
+			zap.Stringer("server", server))
+
 		d.eventServiceInfo.serverID = server
 		d.eventServiceInfo.readyEventReceived = true
 		d.eventServiceInfo.remoteCandidates = nil
@@ -248,59 +263,17 @@ func (d *dispatcherStat) unregisterDispatcher(eventCollector *EventCollector) {
 	}
 }
 
-func (d *dispatcherStat) pauseChangefeed(eventCollector *EventCollector) {
-	d.eventServiceInfo.RLock()
-	defer d.eventServiceInfo.RUnlock()
-
-	if d.eventServiceInfo.serverID == "" || !d.eventServiceInfo.readyEventReceived {
-		log.Info("ignore pause changefeed request because the eventService is not ready",
-			zap.String("changefeedID", d.target.GetChangefeedID().ID().String()),
-			zap.Any("eventServiceID", d.eventServiceInfo.serverID))
-		// Just ignore the request if the dispatcher is not ready.
-		return
-	}
-
-	log.Info("Send pause changefeed event to event service",
-		zap.String("changefeedID", d.target.GetChangefeedID().ID().String()),
-		zap.String("dispatcher", d.target.GetId().String()),
-		zap.Uint64("resolvedTs", d.target.GetResolvedTs()))
-
-	eventCollector.addDispatcherRequestToSendingQueue(d.eventServiceInfo.serverID, eventServiceTopic, DispatcherRequest{
-		Dispatcher: d.target,
-		ActionType: eventpb.ActionType_ACTION_TYPE_PAUSE_CHANGEFEED,
-	})
-}
-
-func (d *dispatcherStat) resumeChangefeed(eventCollector *EventCollector) {
-	d.eventServiceInfo.RLock()
-	defer d.eventServiceInfo.RUnlock()
-
-	if d.eventServiceInfo.serverID == "" || !d.eventServiceInfo.readyEventReceived {
-		log.Info("ignore resume changefeed request because the eventService is not ready",
-			zap.String("changefeedID", d.target.GetChangefeedID().ID().String()),
-			zap.Any("eventServiceID", d.eventServiceInfo.serverID))
-		// Just ignore the request if the dispatcher is not ready.
-		return
-	}
-	log.Info("Send resume changefeed event to event service",
-		zap.String("changefeedID", d.target.GetChangefeedID().ID().String()),
-		zap.Stringer("dispatcher", d.target.GetId()),
-		zap.Uint64("resolvedTs", d.target.GetResolvedTs()))
-
-	eventCollector.addDispatcherRequestToSendingQueue(d.eventServiceInfo.serverID, eventServiceTopic, DispatcherRequest{
-		Dispatcher: d.target,
-		ActionType: eventpb.ActionType_ACTION_TYPE_RESUME_CHANGEFEED,
-	})
-}
-
 func (d *dispatcherStat) pauseDispatcher(eventCollector *EventCollector) {
 	d.eventServiceInfo.RLock()
 	defer d.eventServiceInfo.RUnlock()
 
 	if d.eventServiceInfo.serverID == "" || !d.eventServiceInfo.readyEventReceived {
 		log.Info("ignore pause dispatcher request because the eventService is not ready",
+			zap.Stringer("dispatcherID", d.dispatcherID),
 			zap.String("changefeedID", d.target.GetChangefeedID().ID().String()),
-			zap.Any("eventServiceID", d.eventServiceInfo.serverID))
+			zap.Any("eventServiceID", d.eventServiceInfo.serverID),
+			zap.Bool("readyEventReceived", d.eventServiceInfo.readyEventReceived),
+		)
 		// Just ignore the request if the dispatcher is not ready.
 		return
 	}
@@ -355,4 +328,10 @@ func (d *dispatcherStat) setRemoteCandidates(nodes []string, eventCollector *Eve
 			OnlyUse:    true,
 		},
 	)
+}
+
+func (d *dispatcherStat) getServerID() node.ID {
+	d.eventServiceInfo.RLock()
+	defer d.eventServiceInfo.RUnlock()
+	return d.eventServiceInfo.serverID
 }

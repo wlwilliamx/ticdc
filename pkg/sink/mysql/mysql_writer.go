@@ -38,22 +38,19 @@ const (
 	defaultSupportVectorVersion = "8.4.0"
 )
 
-// MysqlWriter is responsible for writing various dml events, ddl events, syncpoint events to mysql downstream.
-type MysqlWriter struct {
+// Writer is responsible for writing various dml events, ddl events, syncpoint events to mysql downstream.
+type Writer struct {
 	ctx          context.Context
 	db           *sql.DB
-	cfg          *MysqlConfig
+	cfg          *Config
 	ChangefeedID common.ChangeFeedID
 
 	syncPointTableInit     bool
 	lastCleanSyncPointTime time.Time
 
-	ddlTsTableInit   bool
-	tableSchemaStore *util.TableSchemaStore
-
-	// asyncDDLState is used to store the state of async ddl.
-	// key: tableID, value: state(0: unknown state , 1: executing, 2: no executing ddl)
-	asyncDDLState sync.Map
+	ddlTsTableInit      bool
+	ddlTsTableInitMutex sync.Mutex
+	tableSchemaStore    *util.TableSchemaStore
 
 	// implement stmtCache to improve performance, especially when the downstream is TiDB
 	stmtCache *lru.Cache
@@ -68,15 +65,15 @@ type MysqlWriter struct {
 	blockerTicker *time.Ticker
 }
 
-func NewMysqlWriter(
+func NewWriter(
 	ctx context.Context,
 	db *sql.DB,
-	cfg *MysqlConfig,
+	cfg *Config,
 	changefeedID common.ChangeFeedID,
 	statistics *metrics.Statistics,
 	needFormatVectorType bool,
-) *MysqlWriter {
-	res := &MysqlWriter{
+) *Writer {
+	res := &Writer{
 		ctx:                    ctx,
 		db:                     db,
 		cfg:                    cfg,
@@ -84,7 +81,6 @@ func NewMysqlWriter(
 		ChangefeedID:           changefeedID,
 		lastCleanSyncPointTime: time.Now(),
 		ddlTsTableInit:         false,
-		asyncDDLState:          sync.Map{},
 		cachePrepStmts:         cfg.CachePrepStmts,
 		maxAllowedPacket:       cfg.MaxAllowedPacket,
 		stmtCache:              cfg.stmtCache,
@@ -99,15 +95,12 @@ func NewMysqlWriter(
 	return res
 }
 
-func (w *MysqlWriter) SetTableSchemaStore(tableSchemaStore *util.TableSchemaStore) {
+func (w *Writer) SetTableSchemaStore(tableSchemaStore *util.TableSchemaStore) {
 	w.tableSchemaStore = tableSchemaStore
 }
 
-func (w *MysqlWriter) FlushDDLEvent(event *commonEvent.DDLEvent) error {
+func (w *Writer) FlushDDLEvent(event *commonEvent.DDLEvent) error {
 	if w.cfg.DryRun {
-		for _, callback := range event.PostTxnFlushed {
-			callback()
-		}
 		return nil
 	}
 
@@ -115,16 +108,8 @@ func (w *MysqlWriter) FlushDDLEvent(event *commonEvent.DDLEvent) error {
 		// first we check whether there is some async ddl executed now.
 		w.waitAsyncDDLDone(event)
 	}
-
-	// check the ddl should by async or sync executed.
-	if needAsyncExecDDL(event.GetDDLType()) && w.cfg.IsTiDB {
-		// for async exec ddl, we don't flush ddl ts here. Because they don't block checkpointTs.
-		err := w.asyncExecAddIndexDDLIfTimeout(event)
-		if err != nil {
-			return errors.Trace(err)
-		}
-	} else if !(event.TiDBOnly && !w.cfg.IsTiDB) {
-		if w.cfg.IsTiDB {
+	if w.cfg.IsTiDB || !event.TiDBOnly {
+		if w.cfg.IsTiDB && w.cfg.EnableDDLTs {
 			// if downstream is tidb, we write ddl ts before ddl first, and update the ddl ts item after ddl executed,
 			// to ensure the atomic with ddl writing when server is restarted.
 			w.FlushDDLTsPre(event)
@@ -132,9 +117,8 @@ func (w *MysqlWriter) FlushDDLEvent(event *commonEvent.DDLEvent) error {
 
 		err := w.execDDLWithMaxRetries(event)
 		if err != nil {
-			return errors.Trace(err)
+			return err
 		}
-
 		// We need to record ddl' ts after each ddl for each table in the downstream when sink is mysql-compatible.
 		// Only in this way, when the node restart, we can continue sync data from the last ddl ts at least.
 		// Otherwise, after restarting, we may sync old data in new schema, which will leading to data loss.
@@ -142,23 +126,18 @@ func (w *MysqlWriter) FlushDDLEvent(event *commonEvent.DDLEvent) error {
 		// We make Flush ddl ts before callback(), in order to make sure the ddl ts is flushed
 		// before new checkpointTs will report to maintainer. Therefore, when the table checkpointTs is forward,
 		// we can ensure the ddl and ddl ts are both flushed downstream successfully.
-		err = w.FlushDDLTs(event)
-		if err != nil {
-			return err
+		if w.cfg.EnableDDLTs {
+			err = w.FlushDDLTs(event)
+			if err != nil {
+				return err
+			}
 		}
-	}
-
-	for _, callback := range event.PostTxnFlushed {
-		callback()
 	}
 	return nil
 }
 
-func (w *MysqlWriter) FlushSyncPointEvent(event *commonEvent.SyncPointEvent) error {
+func (w *Writer) FlushSyncPointEvent(event *commonEvent.SyncPointEvent) error {
 	if w.cfg.DryRun {
-		for _, callback := range event.PostTxnFlushed {
-			callback()
-		}
 		return nil
 	}
 
@@ -170,7 +149,7 @@ func (w *MysqlWriter) FlushSyncPointEvent(event *commonEvent.SyncPointEvent) err
 		}
 		w.syncPointTableInit = true
 	}
-	if w.cfg.IsTiDB {
+	if w.cfg.IsTiDB && w.cfg.EnableDDLTs {
 		// if downstream is tidb, we write ddl ts before ddl first, and update the ddl ts item after ddl executed,
 		// to ensure the atomic with ddl writing when server is restarted.
 		w.FlushDDLTsPre(event)
@@ -188,49 +167,39 @@ func (w *MysqlWriter) FlushSyncPointEvent(event *commonEvent.SyncPointEvent) err
 	// We make Flush ddl ts before callback(), in order to make sure the ddl ts is flushed
 	// before new checkpointTs will report to maintainer. Therefore, when the table checkpointTs is forward,
 	// we can ensure the ddl and ddl ts are both flushed downstream successfully.
-	err = w.FlushDDLTs(event)
-	if err != nil {
-		return err
+	if w.cfg.EnableDDLTs {
+		err = w.FlushDDLTs(event)
 	}
-
-	for _, callback := range event.PostTxnFlushed {
-		callback()
-	}
-	return nil
+	return err
 }
 
-func (w *MysqlWriter) Flush(events []*commonEvent.DMLEvent) error {
-	dmls, err := w.prepareDMLs(events)
-	if err != nil {
-		return errors.Trace(err)
-	}
+func (w *Writer) Flush(events []*commonEvent.DMLEvent) error {
+	dmls := w.prepareDMLs(events)
 	defer dmlsPool.Put(dmls) // Return dmls to pool after use
 
 	if dmls.rowCount == 0 {
 		return nil
 	}
 
+	var err error
 	if !w.cfg.DryRun {
-		if err = w.execDMLWithMaxRetries(dmls); err != nil {
-			return errors.Trace(err)
-		}
+		err = w.execDMLWithMaxRetries(dmls)
 	} else {
 		w.tryDryRunBlock()
-		if err = w.statistics.RecordBatchExecution(func() (int, int64, error) {
+		err = w.statistics.RecordBatchExecution(func() (int, int64, error) {
 			return dmls.rowCount, dmls.approximateSize, nil
-		}); err != nil {
-			return errors.Trace(err)
-		}
+		})
+	}
+	if err != nil {
+		return errors.Trace(err)
 	}
 	for _, event := range events {
-		for _, callback := range event.PostTxnFlushed {
-			callback()
-		}
+		event.PostFlush()
 	}
 	return nil
 }
 
-func (w *MysqlWriter) tryDryRunBlock() {
+func (w *Writer) tryDryRunBlock() {
 	time.Sleep(w.cfg.DryRunDelay)
 	if w.blockerTicker != nil {
 		select {
@@ -243,8 +212,11 @@ func (w *MysqlWriter) tryDryRunBlock() {
 	}
 }
 
-func (w *MysqlWriter) Close() {
+func (w *Writer) Close() {
 	if w.stmtCache != nil {
 		w.stmtCache.Purge()
+	}
+	if w.blockerTicker != nil {
+		w.blockerTicker.Stop()
 	}
 }

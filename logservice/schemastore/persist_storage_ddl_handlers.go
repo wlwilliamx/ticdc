@@ -21,10 +21,10 @@ import (
 	"github.com/pingcap/ticdc/heartbeatpb"
 	"github.com/pingcap/ticdc/pkg/common"
 	commonEvent "github.com/pingcap/ticdc/pkg/common/event"
+	cerror "github.com/pingcap/ticdc/pkg/errors"
 	"github.com/pingcap/ticdc/pkg/filter"
 	"github.com/pingcap/tidb/pkg/meta/model"
 	pmodel "github.com/pingcap/tidb/pkg/parser/model"
-	cerror "github.com/pingcap/tiflow/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -1334,7 +1334,9 @@ func extractTableInfoFuncForExchangeTablePartition(event *PersistedDDLEvent, tab
 		pmodel.NewCIStr(event.TableName).O,
 		tableID,
 		false,
-		columnSchema)
+		columnSchema,
+		event.TableInfo,
+	)
 	return tableInfo, false
 }
 

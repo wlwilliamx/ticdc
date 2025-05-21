@@ -54,7 +54,9 @@ type DDLEvent struct {
 	// The seq of the event. It is set by event service.
 	Seq uint64 `json:"seq"`
 	// State is the state of sender when sending this event.
-	State              EventSenderState    `json:"state"`
+	State EventSenderState `json:"state"`
+	// MultipleTableInfos holds information for multiple versions of a table.
+	// The first entry always represents the current table information.
 	MultipleTableInfos []*common.TableInfo `json:"-"`
 
 	BlockedTables     *InfluencedTables `json:"blocked_tables"`
@@ -88,6 +90,8 @@ type DDLEvent struct {
 	eventSize int64 `json:"-"`
 
 	Err error `json:"-"`
+	// for simple protocol
+	IsBootstrap bool `msg:"-"`
 }
 
 func (d *DDLEvent) GetType() int {
@@ -144,36 +148,6 @@ func (d *DDLEvent) GetEvents() []*DDLEvent {
 	// Some ddl event may be multi-events, we need to split it into multiple messages.
 	// Such as rename table test.table1 to test.table10, test.table2 to test.table20
 	switch model.ActionType(d.Type) {
-	case model.ActionExchangeTablePartition:
-		if len(d.MultipleTableInfos) != 2 {
-			log.Panic("multipleTableInfos length should be equal to 2", zap.Any("multipleTableInfos", d.MultipleTableInfos))
-		}
-		return []*DDLEvent{
-			// partition table before exchange
-			{
-				Version: d.Version,
-				Type:    d.Type,
-				// SchemaID:   d.SchemaID,
-				// TableID:    d.TableID,
-				SchemaName: d.SchemaName,
-				TableName:  d.TableName,
-				TableInfo:  d.MultipleTableInfos[0],
-				Query:      d.Query,
-				FinishedTs: d.FinishedTs,
-			},
-			// normal table before exchange(TODO: this may be wrong)
-			{
-				Version: d.Version,
-				Type:    d.Type,
-				// SchemaID:   d.TableInfo.SchemaID,
-				// TableID:    d.TableInfo.TableName.TableID,
-				TableInfo:  d.MultipleTableInfos[1],
-				SchemaName: d.ExtraSchemaName,
-				TableName:  d.ExtraTableName,
-				Query:      d.Query,
-				FinishedTs: d.FinishedTs,
-			},
-		}
 	case model.ActionCreateTables, model.ActionRenameTables:
 		events := make([]*DDLEvent, 0, len(d.MultipleTableInfos))
 		queries, err := SplitQueries(d.Query)

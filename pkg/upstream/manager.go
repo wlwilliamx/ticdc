@@ -23,7 +23,7 @@ import (
 	cerror "github.com/pingcap/ticdc/pkg/errors"
 	"github.com/pingcap/ticdc/pkg/etcd"
 	"github.com/pingcap/ticdc/pkg/node"
-	"github.com/pingcap/tiflow/pkg/security"
+	"github.com/pingcap/ticdc/pkg/security"
 	pd "github.com/tikv/pd/client"
 	"go.uber.org/zap"
 )

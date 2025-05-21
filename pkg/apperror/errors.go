@@ -51,9 +51,9 @@ var (
 		errors.RFCCodeText("CDC:ErrMaintainerNotFounded"),
 	)
 
-	ErrMoveTableTimeout = errors.Normalize(
-		"move table timeout",
-		errors.RFCCodeText("CDC:ErrMoveTableTimeout"),
+	ErrTimeout = errors.Normalize(
+		"timeout",
+		errors.RFCCodeText("CDC:ErrTimeout"),
 	)
 
 	ErrNodeIsNotFound = errors.Normalize(
@@ -87,6 +87,7 @@ const (
 	ErrorTypeMessageSendFailed    ErrorType = 206
 	ErrorTypeTargetNotFound       ErrorType = 207
 	ErrorTypeInvalidMessage       ErrorType = 208
+	ErrorTypeTargetMismatch       ErrorType = 209
 
 	// ErrorTypeCreateEventDispatcherManagerFailed ErrorType = 300
 

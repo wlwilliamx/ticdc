@@ -26,7 +26,6 @@ import (
 	"github.com/pingcap/ticdc/pkg/errors"
 	"github.com/pingcap/ticdc/pkg/sink/codec/common"
 	"github.com/pingcap/ticdc/pkg/util"
-	"github.com/pingcap/tiflow/cdc/model"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
@@ -42,7 +41,7 @@ type EncoderGroup interface {
 	Run(ctx context.Context) error
 	// AddEvents add events into the group and encode them by one of the encoders in the group.
 	// Note: The caller should make sure all events should belong to the same topic and partition.
-	AddEvents(ctx context.Context, key model.TopicPartitionKey, events ...*commonEvent.RowEvent) error
+	AddEvents(ctx context.Context, key commonEvent.TopicPartitionKey, events ...*commonEvent.RowEvent) error
 	// Output returns a channel produce futures
 	Output() <-chan *future
 }
@@ -168,28 +167,28 @@ func (g *encoderGroup) runEncoder(ctx context.Context, idx int) error {
 
 func (g *encoderGroup) AddEvents(
 	ctx context.Context,
-	key model.TopicPartitionKey,
+	key commonEvent.TopicPartitionKey,
 	events ...*commonEvent.RowEvent,
 ) error {
 	// bootstrapWorker only not nil when the protocol is simple
-	// if g.bootstrapWorker != nil {
-	// 	err := g.bootstrapWorker.addEvent(ctx, key, events[0].Event)
-	// 	if err != nil {
-	// 		return errors.Trace(err)
-	// 	}
-	// }
+	if g.bootstrapWorker != nil {
+		err := g.bootstrapWorker.addEvent(ctx, key, events[0])
+		if err != nil {
+			return errors.Trace(err)
+		}
+	}
 
 	future := newFuture(key, events...)
 	index := atomic.AddUint64(&g.index, 1) % uint64(g.concurrency)
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return errors.Trace(ctx.Err())
 	case g.inputCh[index] <- future:
 	}
 
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return errors.Trace(ctx.Err())
 	case g.outputCh <- future:
 	}
 
@@ -211,13 +210,13 @@ func (g *encoderGroup) cleanMetrics() {
 // future is a wrapper of the result of encoding events
 // It's used to notify the caller that the result is ready.
 type future struct {
-	Key      model.TopicPartitionKey
+	Key      commonEvent.TopicPartitionKey
 	events   []*commonEvent.RowEvent
 	Messages []*common.Message
 	done     chan struct{}
 }
 
-func newFuture(key model.TopicPartitionKey,
+func newFuture(key commonEvent.TopicPartitionKey,
 	events ...*commonEvent.RowEvent,
 ) *future {
 	return &future{
@@ -231,7 +230,7 @@ func newFuture(key model.TopicPartitionKey,
 func (p *future) Ready(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return errors.Trace(ctx.Err())
 	case <-p.done:
 	}
 	return nil

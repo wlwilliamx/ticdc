@@ -21,6 +21,8 @@ import (
 
 	"github.com/pingcap/log"
 	"github.com/pingcap/ticdc/pkg/common"
+	"github.com/pingcap/ticdc/pkg/config"
+	"github.com/pingcap/ticdc/pkg/errors"
 	ticonfig "github.com/pingcap/tidb/pkg/config"
 	tiddl "github.com/pingcap/tidb/pkg/ddl"
 	"github.com/pingcap/tidb/pkg/domain"
@@ -36,11 +38,14 @@ import (
 	"github.com/pingcap/tidb/pkg/session"
 	"github.com/pingcap/tidb/pkg/store/mockstore"
 	"github.com/pingcap/tidb/pkg/testkit"
-	"github.com/pingcap/tiflow/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"github.com/tikv/client-go/v2/oracle"
 	"go.uber.org/zap"
 )
+
+// CAUTION:
+// ALL METHODS IN THIS FILE ARE FOR TESTING ONLY!!!
+// DO NOT USE THEM IN OTHER PLACES.
 
 // EventTestHelper is a test helper for generating test events
 type EventTestHelper struct {
@@ -53,8 +58,8 @@ type EventTestHelper struct {
 	tableInfos map[string]*common.TableInfo
 }
 
-// NewEventTestHelper creates a SchemaTestHelper
-func NewEventTestHelper(t testing.TB) *EventTestHelper {
+// NewEventTestHelperWithTimeZone creates a SchemaTestHelper with time zone
+func NewEventTestHelperWithTimeZone(t testing.TB, tz *time.Location) *EventTestHelper {
 	store, err := mockstore.NewMockStore()
 	require.NoError(t, err)
 	ticonfig.UpdateGlobal(func(conf *ticonfig.Config) {
@@ -69,7 +74,7 @@ func NewEventTestHelper(t testing.TB) *EventTestHelper {
 
 	require.NoError(t, err)
 
-	mounter := NewMounter(time.Local)
+	mounter := NewMounter(tz, config.GetDefaultReplicaConfig().Integrity)
 
 	return &EventTestHelper{
 		t:          t,
@@ -81,16 +86,36 @@ func NewEventTestHelper(t testing.TB) *EventTestHelper {
 	}
 }
 
+// NewEventTestHelper creates a SchemaTestHelper
+func NewEventTestHelper(t testing.TB) *EventTestHelper {
+	return NewEventTestHelperWithTimeZone(t, time.Local)
+}
+
 func (s *EventTestHelper) ApplyJob(job *timodel.Job) {
-	key := toTableInfosKey(job.SchemaName, job.TableName)
-	log.Info("apply job", zap.String("jobKey", key), zap.Any("job", job))
-	info := common.WrapTableInfo(job.SchemaName, job.BinlogInfo.TableInfo)
+	var tableInfo *timodel.TableInfo
+	if job.BinlogInfo != nil && job.BinlogInfo.TableInfo != nil {
+		tableInfo = job.BinlogInfo.TableInfo
+	} else {
+		// Just retrieve the schema name for a DDL job that does not contain TableInfo.
+		// Currently supported by cdc are: ActionCreateSchema, ActionDropSchema,
+		// and ActionModifySchemaCharsetAndCollate.
+		tableInfo = &timodel.TableInfo{
+			Version: uint16(job.BinlogInfo.FinishedTS),
+		}
+	}
+	info := common.WrapTableInfo(job.SchemaName, tableInfo)
 	info.InitPrivateFields()
+	key := toTableInfosKey(info.GetSchemaName(), info.GetTableName())
+	log.Info("apply job", zap.String("jobKey", key), zap.Any("job", job))
 	s.tableInfos[key] = info
 }
 
 func (s *EventTestHelper) GetTableInfo(job *timodel.Job) *common.TableInfo {
-	key := toTableInfosKey(job.SchemaName, job.TableName)
+	table := ""
+	if job.BinlogInfo != nil && job.BinlogInfo.TableInfo != nil {
+		table = job.BinlogInfo.TableInfo.Name.O
+	}
+	key := toTableInfosKey(job.SchemaName, table)
 	log.Info("apply job", zap.String("jobKey", key), zap.Any("job", job))
 	return s.tableInfos[key]
 }
@@ -164,34 +189,100 @@ func (s *EventTestHelper) DDL2Jobs(ddl string, jobCnt int) []*timodel.Job {
 	return jobs
 }
 
+func (s *EventTestHelper) DDL2Event(ddl string) *DDLEvent {
+	job := s.DDL2Job(ddl)
+	info := s.GetTableInfo(job)
+	return &DDLEvent{
+		SchemaID:   job.SchemaID,
+		TableID:    info.TableName.TableID,
+		SchemaName: info.GetSchemaName(),
+		TableName:  info.GetTableName(),
+		Query:      job.Query,
+		Type:       byte(job.Type),
+		TableInfo:  info,
+		FinishedTs: job.BinlogInfo.FinishedTS,
+	}
+}
+
+func (s *EventTestHelper) DML2BatchEvent(schema, table string, dmls ...string) *BatchDMLEvent {
+	key := toTableInfosKey(schema, table)
+	log.Info("dml2batchEvent", zap.String("key", key))
+	tableInfo, ok := s.tableInfos[key]
+	require.True(s.t, ok)
+	dmlEvent := new(BatchDMLEvent)
+	did := common.NewDispatcherID()
+	ts := tableInfo.UpdateTS()
+	for _, dml := range dmls {
+		dmlEvent.AppendDMLEvent(did, tableInfo.TableName.TableID, ts-1, ts+1, tableInfo)
+		rawKvs := s.DML2RawKv(schema, table, ts, dml)
+		for _, rawKV := range rawKvs {
+			err := dmlEvent.AppendRow(rawKV, s.mounter.DecodeToChunk)
+			require.NoError(s.t, err)
+		}
+	}
+	return dmlEvent
+}
+
 // DML2Event execute the dml(s) and return the corresponding DMLEvent.
 // Note:
 // 1. It dose not support `delete` since the key value cannot be found
 // after the query executed.
 // 2. You must execute create table statement before calling this function.
 // 3. You must set the preRow of the DMLEvent by yourself, since we can not get it from TiDB.
-func (s *EventTestHelper) DML2Event(schema, table string, dml ...string) *DMLEvent {
+func (s *EventTestHelper) DML2Event(schema, table string, dmls ...string) *DMLEvent {
 	key := toTableInfosKey(schema, table)
 	log.Info("dml2event", zap.String("key", key))
 	tableInfo, ok := s.tableInfos[key]
 	require.True(s.t, ok)
+	dmlEvent := new(BatchDMLEvent)
 	did := common.NewDispatcherID()
 	ts := tableInfo.UpdateTS()
-	dmlEvent := NewDMLEvent(did, tableInfo.TableName.TableID, ts-1, ts+1, tableInfo)
-	rawKvs := s.DML2RawKv(schema, table, dml...)
+	dmlEvent.AppendDMLEvent(did, tableInfo.TableName.TableID, ts-1, ts+1, tableInfo)
+	rawKvs := s.DML2RawKv(schema, table, ts, dmls...)
 	for _, rawKV := range rawKvs {
 		err := dmlEvent.AppendRow(rawKV, s.mounter.DecodeToChunk)
 		require.NoError(s.t, err)
 	}
+	return dmlEvent.DMLEvents[0]
+}
+
+func (s *EventTestHelper) DML2UpdateEvent(schema, table string, dml ...string) *DMLEvent {
+	if len(dml) != 2 {
+		log.Fatal("DML2UpdateEvent must have 2 dml statements, the first one is insert, the second one is update", zap.Any("dml", dml))
+	}
+
+	lowerInsert := strings.ToLower(dml[0])
+	lowerUpdate := strings.ToLower(dml[1])
+
+	if !strings.Contains(lowerInsert, "insert") || !strings.Contains(lowerUpdate, "update") {
+		log.Fatal("DML2UpdateEvent must have 2 dml statements, the first one is insert, the second one is update", zap.Any("dml", dml))
+	}
+
+	key := toTableInfosKey(schema, table)
+	tableInfo, ok := s.tableInfos[key]
+	require.True(s.t, ok)
+	did := common.NewDispatcherID()
+	ts := tableInfo.UpdateTS()
+	dmlEvent := newDMLEvent(did, tableInfo.TableName.TableID, ts-1, ts+1, tableInfo)
+	rawKvs := s.DML2RawKv(schema, table, ts, dml...)
+
+	raw := &common.RawKVEntry{
+		OpType:   common.OpTypePut,
+		Key:      rawKvs[0].Key,
+		Value:    rawKvs[0].Value,
+		OldValue: rawKvs[1].Value,
+		StartTs:  rawKvs[0].StartTs,
+		CRTs:     rawKvs[1].CRTs,
+	}
+	dmlEvent.AppendRow(raw, s.mounter.DecodeToChunk)
 	return dmlEvent
 }
 
-func (s *EventTestHelper) DML2RawKv(schema, table string, dml ...string) []*common.RawKVEntry {
+func (s *EventTestHelper) DML2RawKv(schema, table string, ddlFinishedTs uint64, dml ...string) []*common.RawKVEntry {
 	tableInfo, ok := s.tableInfos[toTableInfosKey(schema, table)]
 	require.True(s.t, ok)
-	ts := tableInfo.UpdateTS()
 	var rawKVs []*common.RawKVEntry
-	for _, dml := range dml {
+	for i, dml := range dml {
 		s.tk.MustExec(dml)
 		key, value := s.getLastKeyValue(tableInfo.TableName.TableID)
 		rawKV := &common.RawKVEntry{
@@ -199,8 +290,8 @@ func (s *EventTestHelper) DML2RawKv(schema, table string, dml ...string) []*comm
 			Key:      key,
 			Value:    value,
 			OldValue: nil,
-			StartTs:  ts - 1,
-			CRTs:     ts + 1,
+			StartTs:  ddlFinishedTs + uint64(i),
+			CRTs:     ddlFinishedTs + uint64(i+1),
 		}
 		rawKVs = append(rawKVs, rawKV)
 	}
@@ -285,4 +376,12 @@ func SplitQueries(queries string) ([]string, error) {
 	}
 
 	return res, nil
+}
+
+func BatchDML(dml *DMLEvent) *BatchDMLEvent {
+	return &BatchDMLEvent{
+		DMLEvents: []*DMLEvent{dml},
+		TableInfo: dml.TableInfo,
+		Rows:      dml.Rows,
+	}
 }

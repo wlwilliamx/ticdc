@@ -14,7 +14,10 @@
 package maintainer
 
 import (
+	"bytes"
 	"context"
+	"math/rand"
+	"sort"
 	"time"
 
 	"github.com/pingcap/log"
@@ -33,7 +36,8 @@ import (
 	"github.com/pingcap/ticdc/pkg/messaging"
 	"github.com/pingcap/ticdc/pkg/node"
 	"github.com/pingcap/ticdc/pkg/pdutil"
-	"github.com/pingcap/ticdc/pkg/scheduler"
+	pkgscheduler "github.com/pingcap/ticdc/pkg/scheduler"
+	pkgoperator "github.com/pingcap/ticdc/pkg/scheduler/operator"
 	"github.com/pingcap/ticdc/pkg/spanz"
 	"github.com/pingcap/ticdc/server/watcher"
 	"github.com/pingcap/ticdc/utils"
@@ -46,7 +50,7 @@ import (
 type Controller struct {
 	bootstrapped bool
 
-	schedulerController *scheduler.Controller
+	schedulerController *pkgscheduler.Controller
 	operatorController  *operator.Controller
 	replicationDB       *replica.ReplicationDB
 	messageCenter       messaging.MessageCenter
@@ -90,8 +94,13 @@ func NewController(changefeedID common.ChangeFeedID,
 	nodeManager := appcontext.GetService[*watcher.NodeManager](watcher.NodeManagerName)
 
 	oc := operator.NewOperatorController(changefeedID, mc, replicaSetDB, nodeManager, batchSize)
+
+	var schedulerCfg *config.ChangefeedSchedulerConfig
+	if cfConfig != nil {
+		schedulerCfg = cfConfig.Scheduler
+	}
 	sc := NewScheduleController(
-		changefeedID, batchSize, oc, replicaSetDB, nodeManager, balanceInterval, splitter,
+		changefeedID, batchSize, oc, replicaSetDB, nodeManager, balanceInterval, splitter, schedulerCfg,
 	)
 
 	return &Controller{
@@ -180,9 +189,9 @@ func (c *Controller) AddNewTable(table commonEvent.Table, startTs uint64) {
 		EndKey:   span.EndKey,
 	}
 	tableSpans := []*heartbeatpb.TableSpan{tableSpan}
-	if c.enableTableAcrossNodes {
-		// split the whole table span base on the configuration, todo: background split table
-		tableSpans = c.splitter.SplitSpans(context.Background(), tableSpan, len(c.nodeManager.GetAliveNodes()))
+	if c.enableTableAcrossNodes && len(c.nodeManager.GetAliveNodes()) > 1 {
+		// split the whole table span base on region count if table region count is exceed the limit
+		tableSpans = c.splitter.SplitSpansByRegion(context.Background(), tableSpan)
 	}
 	c.addNewSpans(table.SchemaID, tableSpans, startTs)
 }
@@ -216,7 +225,7 @@ func (c *Controller) AddNewTable(table commonEvent.Table, startTs uint64) {
 //
 // Parameters:
 //   - allNodesResp: Bootstrap responses from all nodes containing their current state
-//   - isMysqlCompatibleBackend: Flag indicating if using MySQL-compatible backend
+//   - isMysqlCompatible: Flag indicating if using MySQL-compatible backend
 //
 // Returns:
 //   - *Barrier: Initialized barrier for consistency tracking
@@ -530,10 +539,7 @@ func (c *Controller) loadTables(startTs uint64) ([]commonEvent.Table, error) {
 	return tables, err
 }
 
-// only for test
-// moveTable is used for inner api(which just for make test cases convience) to force move a table to a target node.
-// moveTable only works for the complete table, not for the table splited.
-func (c *Controller) moveTable(tableId int64, targetNode node.ID) error {
+func (c *Controller) checkParams(tableId int64, targetNode node.ID) error {
 	if !c.replicationDB.IsTableExists(tableId) {
 		// the table is not exist in this node
 		return apperror.ErrTableIsNotFounded.GenWithStackByArgs("tableID", tableId)
@@ -553,6 +559,17 @@ func (c *Controller) moveTable(tableId int64, targetNode node.ID) error {
 	}
 	if !hasNode {
 		return apperror.ErrNodeIsNotFound.GenWithStackByArgs("targetNode", targetNode)
+	}
+
+	return nil
+}
+
+// only for test
+// moveTable is used for inner api(which just for make test cases convience) to force move a table to a target node.
+// moveTable only works for the complete table, not for the table splited.
+func (c *Controller) moveTable(tableId int64, targetNode node.ID) error {
+	if err := c.checkParams(tableId, targetNode); err != nil {
+		return err
 	}
 
 	replications := c.replicationDB.GetTasksByTableID(tableId)
@@ -575,10 +592,169 @@ func (c *Controller) moveTable(tableId int64, targetNode node.ID) error {
 	}
 
 	if !op.IsFinished() {
-		return apperror.ErrMoveTableTimeout.GenWithStackByArgs("move table operator is timeout")
+		return apperror.ErrTimeout.GenWithStackByArgs("move table operator is timeout")
 	}
 
 	return nil
+}
+
+// only for test
+// moveSplitTable is used for inner api(which just for make test cases convience) to force move the dispatchers in a split table to a target node.
+func (c *Controller) moveSplitTable(tableId int64, targetNode node.ID) error {
+	if err := c.checkParams(tableId, targetNode); err != nil {
+		return err
+	}
+
+	replications := c.replicationDB.GetTasksByTableID(tableId)
+	opList := make([]pkgoperator.Operator[common.DispatcherID, *heartbeatpb.TableSpanStatus], 0, len(replications))
+	finishList := make([]bool, len(replications))
+	for _, replication := range replications {
+		if replication.GetNodeID() == targetNode {
+			continue
+		}
+		op := c.operatorController.NewMoveOperator(replication, replication.GetNodeID(), targetNode)
+		c.operatorController.AddOperator(op)
+		opList = append(opList, op)
+	}
+
+	// check the op is finished or not
+	count := 0
+	maxTry := 30
+	for count < maxTry {
+		finish := true
+		for idx, op := range opList {
+			if finishList[idx] {
+				continue
+			}
+			if op.IsFinished() {
+				finishList[idx] = true
+				continue
+			} else {
+				finish = false
+			}
+		}
+
+		if finish {
+			return nil
+		}
+
+		time.Sleep(1 * time.Second)
+		count += 1
+		log.Info("wait for move split table operator finished", zap.Int("count", count))
+	}
+
+	return apperror.ErrTimeout.GenWithStackByArgs("move split table operator is timeout")
+}
+
+// only for test
+// SplitTableByRegionCount split table based on region count
+// it can split the table whether the table have one dispatcher or multiple dispatchers
+func (c *Controller) SplitTableByRegionCount(tableID int64) error {
+	if !c.replicationDB.IsTableExists(tableID) {
+		// the table is not exist in this node
+		return apperror.ErrTableIsNotFounded.GenWithStackByArgs("tableID", tableID)
+	}
+
+	if tableID == 0 {
+		return apperror.ErrTableNotSupportMove.GenWithStackByArgs("tableID", tableID)
+	}
+
+	replications := c.replicationDB.GetTasksByTableID(tableID)
+
+	span := spanz.TableIDToComparableSpan(tableID)
+	wholeSpan := &heartbeatpb.TableSpan{
+		TableID:  span.TableID,
+		StartKey: span.StartKey,
+		EndKey:   span.EndKey,
+	}
+	splitTableSpans := c.splitter.SplitSpansByRegion(context.Background(), wholeSpan)
+
+	if len(splitTableSpans) == len(replications) {
+		log.Info("Split Table is finished; There is no need to do split", zap.Any("tableID", tableID))
+		return nil
+	}
+
+	randomIdx := rand.Intn(len(replications))
+	primaryID := replications[randomIdx].ID
+	primaryOp := operator.NewMergeSplitDispatcherOperator(c.replicationDB, primaryID, replications[randomIdx], replications, splitTableSpans, nil)
+	for _, replicaSet := range replications {
+		var op *operator.MergeSplitDispatcherOperator
+		if replicaSet.ID == primaryID {
+			op = primaryOp
+		} else {
+			op = operator.NewMergeSplitDispatcherOperator(c.replicationDB, primaryID, replicaSet, nil, nil, primaryOp.GetOnFinished())
+		}
+		c.operatorController.AddOperator(op)
+	}
+
+	count := 0
+	maxTry := 30
+	for count < maxTry {
+		if primaryOp.IsFinished() {
+			return nil
+		}
+
+		time.Sleep(1 * time.Second)
+		count += 1
+		log.Info("wait for split table operator finished", zap.Int("count", count))
+	}
+
+	return apperror.ErrTimeout.GenWithStackByArgs("split table operator is timeout")
+}
+
+// only for test
+// MergeTable merge two nearby dispatchers in this table into one dispatcher,
+// so after merge table, the table may also have multiple dispatchers
+func (c *Controller) MergeTable(tableID int64) error {
+	if !c.replicationDB.IsTableExists(tableID) {
+		// the table is not exist in this node
+		return apperror.ErrTableIsNotFounded.GenWithStackByArgs("tableID", tableID)
+	}
+
+	if tableID == 0 {
+		return apperror.ErrTableNotSupportMove.GenWithStackByArgs("tableID", tableID)
+	}
+
+	replications := c.replicationDB.GetTasksByTableID(tableID)
+
+	if len(replications) == 1 {
+		log.Info("Merge Table is finished; There is only one replication for this table, so no need to do merge", zap.Any("tableID", tableID))
+		return nil
+	}
+
+	// sort by startKey
+	sort.Slice(replications, func(i, j int) bool {
+		return bytes.Compare(replications[i].Span.StartKey, replications[j].Span.StartKey) < 0
+	})
+
+	// choose the first two replication to merge a new replication
+	newSpan := &heartbeatpb.TableSpan{
+		TableID:  replications[0].Span.TableID,
+		StartKey: replications[0].Span.StartKey,
+		EndKey:   replications[1].Span.EndKey,
+	}
+
+	mergeReplication := replications[:2]
+
+	primaryID := replications[0].ID
+	primaryOp := operator.NewMergeSplitDispatcherOperator(c.replicationDB, primaryID, replications[0], mergeReplication, []*heartbeatpb.TableSpan{newSpan}, nil)
+	secondaryOp := operator.NewMergeSplitDispatcherOperator(c.replicationDB, primaryID, replications[1], nil, nil, primaryOp.GetOnFinished())
+	c.operatorController.AddOperator(primaryOp)
+	c.operatorController.AddOperator(secondaryOp)
+
+	count := 0
+	maxTry := 30
+	for count < maxTry {
+		if primaryOp.IsFinished() {
+			return nil
+		}
+
+		time.Sleep(1 * time.Second)
+		count += 1
+		log.Info("wait for merge table table operator finished", zap.Int("count", count))
+	}
+
+	return apperror.ErrTimeout.GenWithStackByArgs("merge table operator is timeout")
 }
 
 func (c *Controller) isDDLDispatcher(dispatcherID common.DispatcherID) bool {
@@ -593,9 +769,8 @@ func (c *Controller) Stop() {
 
 func getSchemaInfo(table commonEvent.Table, isMysqlCompatibleBackend bool) *heartbeatpb.SchemaInfo {
 	schemaInfo := &heartbeatpb.SchemaInfo{}
-	if isMysqlCompatibleBackend {
-		schemaInfo.SchemaID = table.SchemaID
-	} else {
+	schemaInfo.SchemaID = table.SchemaID
+	if !isMysqlCompatibleBackend {
 		schemaInfo.SchemaName = table.SchemaName
 	}
 	return schemaInfo
@@ -603,9 +778,8 @@ func getSchemaInfo(table commonEvent.Table, isMysqlCompatibleBackend bool) *hear
 
 func getTableInfo(table commonEvent.Table, isMysqlCompatibleBackend bool) *heartbeatpb.TableInfo {
 	tableInfo := &heartbeatpb.TableInfo{}
-	if isMysqlCompatibleBackend {
-		tableInfo.TableID = table.TableID
-	} else {
+	tableInfo.TableID = table.TableID
+	if !isMysqlCompatibleBackend {
 		tableInfo.TableName = table.TableName
 	}
 	return tableInfo

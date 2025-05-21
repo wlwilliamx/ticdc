@@ -18,7 +18,6 @@ import (
 	"github.com/pingcap/ticdc/pkg/common"
 	"github.com/pingcap/tidb/pkg/meta/model"
 	"github.com/pingcap/tidb/pkg/util/chunk"
-	"go.uber.org/zap"
 )
 
 //go:generate msgp
@@ -99,15 +98,18 @@ const (
 
 // ToRedoLog converts row changed event to redo log
 func (r *DMLEvent) ToRedoLog() *RedoLog {
-	r.FinishGetRow()
-	row, valid := r.GetNextRow()
-	r.FinishGetRow()
-
+	r.Rewind()
+	startTs := r.GetStartTs()
+	commitTs := r.GetCommitTs()
+	row, ok := r.GetNextRow()
+	if !ok {
+		return nil
+	}
 	redoLog := &RedoLog{
 		RedoRow: RedoDMLEvent{
 			Row: &DMLEventInRedoLog{
-				StartTs:      r.StartTs,
-				CommitTs:     r.CommitTs,
+				StartTs:      startTs,
+				CommitTs:     commitTs,
 				Table:        nil,
 				Columns:      nil,
 				PreColumns:   nil,
@@ -118,8 +120,7 @@ func (r *DMLEvent) ToRedoLog() *RedoLog {
 		},
 		Type: RedoLogTypeRow,
 	}
-
-	if valid && r.TableInfo != nil {
+	if r.TableInfo != nil {
 		redoLog.RedoRow.Row.Table = new(common.TableName)
 		*redoLog.RedoRow.Row.Table = r.TableInfo.TableName
 
@@ -163,7 +164,6 @@ func (r *DMLEvent) ToRedoLog() *RedoLog {
 		redoLog.RedoRow.Row.Columns = columns
 		redoLog.RedoRow.Row.PreColumns = columns
 	}
-
 	return redoLog
 }
 
@@ -211,10 +211,7 @@ func (r RedoDMLEvent) IsUpdate() bool {
 }
 
 func parseColumnValue(row *chunk.Row, column *model.ColumnInfo, i int) RedoColumnValue {
-	v, err := common.ExtractColVal(row, column, i)
-	if err != nil {
-		log.Panic("ExtractColVal fail", zap.Error(err))
-	}
+	v := common.ExtractColVal(row, column, i)
 	rrv := RedoColumnValue{Value: v}
 	switch t := rrv.Value.(type) {
 	case []byte:

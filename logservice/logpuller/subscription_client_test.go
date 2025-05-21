@@ -26,8 +26,8 @@ import (
 	"github.com/pingcap/ticdc/logservice/txnutil"
 	"github.com/pingcap/ticdc/pkg/common"
 	"github.com/pingcap/ticdc/pkg/pdutil"
+	"github.com/pingcap/ticdc/pkg/security"
 	"github.com/pingcap/tidb/pkg/store/mockstore/mockcopr"
-	"github.com/pingcap/tiflow/pkg/security"
 	"github.com/stretchr/testify/require"
 	"github.com/tikv/client-go/v2/oracle"
 	"github.com/tikv/client-go/v2/testutils"
@@ -35,7 +35,7 @@ import (
 )
 
 func TestGenerateResolveLockTask(t *testing.T) {
-	client := &SubscriptionClient{
+	client := &subscriptionClient{
 		resolveLockTaskCh: make(chan resolveLockTask, 10),
 	}
 	rawSpan := heartbeatpb.TableSpan{

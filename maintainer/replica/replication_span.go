@@ -57,7 +57,7 @@ func NewSpanReplication(cfID common.ChangeFeedID,
 	span *heartbeatpb.TableSpan,
 	checkpointTs uint64,
 ) *SpanReplication {
-	r := newSpanReplication(cfID, id, pdClock, SchemaID, span, checkpointTs)
+	r := newSpanReplication(cfID, id, pdClock, SchemaID, span)
 	r.initStatus(&heartbeatpb.TableSpanStatus{
 		ID:           id.ToPB(),
 		CheckpointTs: checkpointTs,
@@ -68,6 +68,7 @@ func NewSpanReplication(cfID common.ChangeFeedID,
 		zap.Int64("schemaID", SchemaID),
 		zap.Int64("tableID", span.TableID),
 		zap.String("groupID", replica.GetGroupName(r.groupID)),
+		zap.Uint64("checkpointTs", checkpointTs),
 		zap.String("start", hex.EncodeToString(span.StartKey)),
 		zap.String("end", hex.EncodeToString(span.EndKey)))
 	return r
@@ -82,7 +83,7 @@ func NewWorkingSpanReplication(
 	status *heartbeatpb.TableSpanStatus,
 	nodeID node.ID,
 ) *SpanReplication {
-	r := newSpanReplication(cfID, id, pdClock, SchemaID, span, status.CheckpointTs)
+	r := newSpanReplication(cfID, id, pdClock, SchemaID, span)
 	// Must set Node ID when creating a working span replication
 	r.SetNodeID(nodeID)
 	r.initStatus(status)
@@ -100,7 +101,7 @@ func NewWorkingSpanReplication(
 	return r
 }
 
-func newSpanReplication(cfID common.ChangeFeedID, id common.DispatcherID, pdClock pdutil.Clock, SchemaID int64, span *heartbeatpb.TableSpan, checkpointTs uint64) *SpanReplication {
+func newSpanReplication(cfID common.ChangeFeedID, id common.DispatcherID, pdClock pdutil.Clock, SchemaID int64, span *heartbeatpb.TableSpan) *SpanReplication {
 	r := &SpanReplication{
 		ID:           id,
 		pdClock:      pdClock,
@@ -219,8 +220,6 @@ func (r *SpanReplication) GetGroupID() replica.GroupID {
 }
 
 func (r *SpanReplication) NewAddDispatcherMessage(server node.ID) (*messaging.TargetMessage, error) {
-	ts := r.pdClock.CurrentTS()
-
 	return messaging.NewSingleTargetMessage(server,
 		messaging.HeartbeatCollectorTopic,
 		&heartbeatpb.ScheduleDispatcherRequest{
@@ -230,7 +229,6 @@ func (r *SpanReplication) NewAddDispatcherMessage(server node.ID) (*messaging.Ta
 				SchemaID:     r.schemaID,
 				Span:         r.Span,
 				StartTs:      r.status.Load().CheckpointTs,
-				CurrentPdTs:  ts,
 			},
 			ScheduleAction: heartbeatpb.ScheduleAction_Create,
 		}), nil

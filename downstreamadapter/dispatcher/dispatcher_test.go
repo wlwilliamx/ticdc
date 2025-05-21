@@ -29,17 +29,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TODO: Merge this file into dispatcher_test.go after refactoring the dispatcher test.
-
 type mockSink struct {
 	dmls     []*commonEvent.DMLEvent
 	isNormal bool
 	sinkType common.SinkType
 }
 
-func (s *mockSink) AddDMLEvent(event *commonEvent.DMLEvent) error {
+func (s *mockSink) AddDMLEvent(event *commonEvent.DMLEvent) {
 	s.dmls = append(s.dmls, event)
-	return nil
 }
 
 func (s *mockSink) WriteBlockEvent(event commonEvent.BlockEvent) error {
@@ -47,14 +44,14 @@ func (s *mockSink) WriteBlockEvent(event commonEvent.BlockEvent) error {
 	return nil
 }
 
-func (s *mockSink) PassBlockEvent(event commonEvent.BlockEvent) {
-	event.PostFlush()
+func (s *mockSink) AddCheckpointTs(_ uint64) {
 }
 
-func (s *mockSink) AddCheckpointTs(ts uint64) {
+func (s *mockSink) SetTableSchemaStore(_ *sinkutil.TableSchemaStore) {
 }
 
-func (s *mockSink) SetTableSchemaStore(tableSchemaStore *sinkutil.TableSchemaStore) {
+func (s *mockSink) GetStartTsList(_ []int64, startTsList []int64, _ bool) ([]int64, []bool, error) {
+	return startTsList, make([]bool, len(startTsList)), nil
 }
 
 func (s *mockSink) Close(bool) {}
@@ -113,6 +110,7 @@ func newDispatcherForTest(sink sink.Sink, tableSpan *heartbeatpb.TableSpan) *Dis
 		tableSpan,
 		sink,
 		common.Ts(0), // startTs
+		make(chan TableSpanStatusWithSeq, 128),
 		make(chan *heartbeatpb.TableSpanBlockStatus, 128),
 		1, // schemaID
 		NewSchemaIDToDispatchers(),
@@ -154,7 +152,6 @@ func TestDispatcherHandleEvents(t *testing.T) {
 	sink := newMockSink(common.MysqlSinkType)
 	tableSpan := getCompleteTableSpan()
 	dispatcher := newDispatcherForTest(sink, tableSpan)
-	dispatcher.SetInitialTableInfo(tableInfo)
 	require.Equal(t, uint64(0), dispatcher.GetCheckpointTs())
 	require.Equal(t, uint64(0), dispatcher.GetResolvedTs())
 	tableProgress := dispatcher.tableProgress
@@ -666,13 +663,9 @@ func TestDispatcherClose(t *testing.T) {
 	dmlEvent.CommitTs = 2
 	dmlEvent.Length = 1
 
-	tableInfo := dmlEvent.TableInfo
-
 	{
 		sink := newMockSink(common.MysqlSinkType)
 		dispatcher := newDispatcherForTest(sink, getCompleteTableSpan())
-
-		dispatcher.SetInitialTableInfo(tableInfo)
 
 		// ===== dml event =====
 		nodeID := node.NewID()
@@ -694,8 +687,6 @@ func TestDispatcherClose(t *testing.T) {
 	{
 		sink := newMockSink(common.MysqlSinkType)
 		dispatcher := newDispatcherForTest(sink, getCompleteTableSpan())
-
-		dispatcher.SetInitialTableInfo(tableInfo)
 
 		// ===== dml event =====
 		nodeID := node.NewID()

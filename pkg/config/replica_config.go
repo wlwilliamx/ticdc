@@ -24,10 +24,10 @@ import (
 	"github.com/pingcap/errors"
 	"github.com/pingcap/log"
 	cerror "github.com/pingcap/ticdc/pkg/errors"
+	"github.com/pingcap/ticdc/pkg/integrity"
 	"github.com/pingcap/ticdc/pkg/util"
 	"github.com/pingcap/tiflow/pkg/config"
 	"github.com/pingcap/tiflow/pkg/config/outdated"
-	"github.com/pingcap/tiflow/pkg/integrity"
 	"github.com/pingcap/tiflow/pkg/redo"
 	"github.com/pingcap/tiflow/pkg/sink"
 	"go.uber.org/zap"
@@ -69,7 +69,6 @@ var defaultReplicaConfig = &ReplicaConfig{
 		Terminator:                       util.AddressOf(CRLF),
 		DateSeparator:                    util.AddressOf(DateSeparatorDay.String()),
 		EnablePartitionSeparator:         util.AddressOf(true),
-		EnableKafkaSinkV2:                util.AddressOf(false),
 		OnlyOutputUpdatedColumns:         util.AddressOf(false),
 		DeleteOnlyOutputHandleKeyColumns: util.AddressOf(false),
 		ContentCompatible:                util.AddressOf(false),
@@ -98,10 +97,12 @@ var defaultReplicaConfig = &ReplicaConfig{
 		},
 	},
 	Scheduler: &ChangefeedSchedulerConfig{
-		EnableTableAcrossNodes: false,
-		RegionThreshold:        100_000,
-		WriteKeyThreshold:      0,
-		SplitNumberPerNode:     1,
+		EnableTableAcrossNodes:     false,
+		RegionThreshold:            100_000,
+		WriteKeyThreshold:          0,
+		SplitNumberPerNode:         1,
+		SchedulingTaskCountPerNode: 20,  // TODO: choose a btter value
+		RegionCountPerSpan:         100, // TODO: choose a btter value
 	},
 	Integrity: &integrity.Config{
 		IntegrityCheckLevel:   integrity.CheckLevelNone,

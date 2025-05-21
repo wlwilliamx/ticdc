@@ -16,9 +16,10 @@ package event
 import (
 	"github.com/pingcap/ticdc/pkg/common"
 	"github.com/pingcap/ticdc/pkg/common/columnselector"
+	"github.com/pingcap/ticdc/pkg/integrity"
+	timodel "github.com/pingcap/tidb/pkg/meta/model"
+	"github.com/pingcap/tidb/pkg/parser/mysql"
 	"github.com/pingcap/tidb/pkg/util/chunk"
-	timodel "github.com/pingcap/tiflow/cdc/model"
-	"github.com/pingcap/tiflow/pkg/integrity"
 )
 
 //go:generate msgp
@@ -80,16 +81,27 @@ func (r *RowChangedEvent) IsUpdate() bool {
 }
 
 type MQRowEvent struct {
-	Key      timodel.TopicPartitionKey
+	Key      TopicPartitionKey
 	RowEvent RowEvent
 }
 
+// TopicPartitionKey contains the topic and partition key of the message.
+type TopicPartitionKey struct {
+	Topic          string
+	Partition      int32
+	PartitionKey   string
+	TotalPartition int32
+}
+
 type RowEvent struct {
-	TableInfo      *common.TableInfo
-	CommitTs       uint64
-	Event          RowChange
-	ColumnSelector columnselector.Selector
-	Callback       func()
+	PhysicalTableID int64
+	TableInfo       *common.TableInfo
+	CommitTs        uint64
+	Event           RowChange
+	ColumnSelector  columnselector.Selector
+	Callback        func()
+
+	Checksum *integrity.Checksum
 }
 
 func (e *RowEvent) IsDelete() bool {
@@ -112,18 +124,35 @@ func (e *RowEvent) GetPreRows() *chunk.Row {
 	return &e.Event.PreRow
 }
 
+func (t *RowEvent) GetTableID() int64 {
+	return t.PhysicalTableID
+}
+
 // PrimaryKeyColumnNames return all primary key's name
 // TODO: need a test for delete / insert / update event
 func (e *RowEvent) PrimaryKeyColumnNames() []string {
 	var result []string
 
 	result = make([]string, 0)
-	tableInfo := e.TableInfo
 	columns := e.TableInfo.GetColumns()
 	for _, col := range columns {
-		if col != nil && tableInfo.ForceGetColumnFlagType(col.ID).IsPrimaryKey() {
-			result = append(result, tableInfo.ForceGetColumnName(col.ID))
+		if col != nil && mysql.HasPriKeyFlag(col.GetFlag()) {
+			result = append(result, col.Name.O)
 		}
 	}
 	return result
+}
+
+// PrimaryKeyColumn return all primary key's indexes and column infos
+func (e *RowEvent) PrimaryKeyColumn() ([]int, []*timodel.ColumnInfo) {
+	infos := make([]*timodel.ColumnInfo, 0)
+	index := make([]int, 0)
+	columns := e.TableInfo.GetColumns()
+	for i, col := range columns {
+		if col != nil && mysql.HasPriKeyFlag(col.GetFlag()) {
+			infos = append(infos, col)
+			index = append(index, i)
+		}
+	}
+	return index, infos
 }

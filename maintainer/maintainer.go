@@ -17,11 +17,13 @@ import (
 	"context"
 	"encoding/json"
 	"math"
+	"net/url"
 	"sync"
 	"time"
 
 	"github.com/pingcap/failpoint"
 	"github.com/pingcap/log"
+	"github.com/pingcap/ticdc/downstreamadapter/sink/helper"
 	"github.com/pingcap/ticdc/heartbeatpb"
 	"github.com/pingcap/ticdc/maintainer/replica"
 	"github.com/pingcap/ticdc/maintainer/split"
@@ -34,7 +36,6 @@ import (
 	"github.com/pingcap/ticdc/pkg/metrics"
 	"github.com/pingcap/ticdc/pkg/node"
 	"github.com/pingcap/ticdc/pkg/pdutil"
-	"github.com/pingcap/ticdc/pkg/sink/util"
 	"github.com/pingcap/ticdc/server/watcher"
 	"github.com/pingcap/ticdc/utils/chann"
 	"github.com/pingcap/ticdc/utils/threadpool"
@@ -668,16 +669,26 @@ func (m *Maintainer) onMaintainerPostBootstrapResponse(msg *messaging.TargetMess
 	m.postBootstrapMsg = nil
 }
 
+// isMysqlCompatible returns true if the sinkURIStr is mysql compatible.
+func isMysqlCompatible(sinkURIStr string) (bool, error) {
+	sinkURI, err := url.Parse(sinkURIStr)
+	if err != nil {
+		return false, errors.WrapError(errors.ErrSinkURIInvalid, err)
+	}
+	scheme := helper.GetScheme(sinkURI)
+	return helper.IsMySQLCompatibleScheme(scheme), nil
+}
+
 func (m *Maintainer) onBootstrapDone(cachedResp map[node.ID]*heartbeatpb.MaintainerBootstrapResponse) {
 	if cachedResp == nil {
 		return
 	}
-	isMysqlCompatibleBackend, err := util.IsMysqlCompatibleBackend(m.config.SinkURI)
+	isMySQLCompatible, err := isMysqlCompatible(m.config.SinkURI)
 	if err != nil {
 		m.handleError(err)
 		return
 	}
-	barrier, msg, err := m.controller.FinishBootstrap(cachedResp, isMysqlCompatibleBackend)
+	barrier, msg, err := m.controller.FinishBootstrap(cachedResp, isMySQLCompatible)
 	if err != nil {
 		m.handleError(err)
 		return
@@ -933,7 +944,24 @@ func (m *Maintainer) MoveTable(tableId int64, targetNode node.ID) error {
 	return m.controller.moveTable(tableId, targetNode)
 }
 
+// MoveSplitTable moves all the dispatchers in a split table to a specific node.
+func (m *Maintainer) MoveSplitTable(tableId int64, targetNode node.ID) error {
+	return m.controller.moveSplitTable(tableId, targetNode)
+}
+
 // GetTables returns all tables.
 func (m *Maintainer) GetTables() []*replica.SpanReplication {
 	return m.controller.replicationDB.GetAllTasks()
+}
+
+// SplitTableByRegionCount split table based on region count
+// it can split the table whether the table have one dispatcher or multiple dispatchers
+func (m *Maintainer) SplitTableByRegionCount(tableId int64) error {
+	return m.controller.SplitTableByRegionCount(tableId)
+}
+
+// MergeTable merge two dispatchers in this table into one dispatcher,
+// so after merge table, the table may also have multiple dispatchers
+func (m *Maintainer) MergeTable(tableId int64) error {
+	return m.controller.MergeTable(tableId)
 }

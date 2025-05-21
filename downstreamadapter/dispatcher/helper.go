@@ -15,6 +15,7 @@ package dispatcher
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pingcap/log"
@@ -227,6 +228,13 @@ func (s *ComponentStateWithMutex) Get() heartbeatpb.ComponentState {
 	return s.componentStatus
 }
 
+type TableSpanStatusWithSeq struct {
+	*heartbeatpb.TableSpanStatus
+	CheckpointTs uint64
+	ResolvedTs   uint64
+	Seq          uint64
+}
+
 /*
 HeartBeatInfo is used to collect the message for HeartBeatRequest for each dispatcher.
 Mainly about the progress of each dispatcher:
@@ -380,4 +388,21 @@ func GetDispatcherStatusDynamicStream() dynstream.DynamicStream[common.GID, comm
 		dispatcherStatusDS.Start()
 	})
 	return dispatcherStatusDS
+}
+
+// bootstrapState used to check if send bootstrap event after changefeed created
+type bootstrapState int32
+
+const (
+	BootstrapNotStarted bootstrapState = iota
+	BootstrapInProgress
+	BootstrapFinished
+)
+
+func storeBootstrapState(addr *bootstrapState, state bootstrapState) {
+	atomic.StoreInt32((*int32)(addr), int32(state))
+}
+
+func loadBootstrapState(addr *bootstrapState) bootstrapState {
+	return bootstrapState(atomic.LoadInt32((*int32)(addr)))
 }

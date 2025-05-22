@@ -250,7 +250,8 @@ func NewEventDispatcherManager(
 		zap.Stringer("changefeedID", changefeedID),
 		zap.Stringer("maintainerID", maintainerID),
 		zap.Uint64("startTs", startTs),
-		zap.Uint64("tableTriggerStartTs", tableTriggerStartTs))
+		zap.Uint64("tableTriggerStartTs", tableTriggerStartTs),
+	)
 	return manager, tableTriggerStartTs, nil
 }
 
@@ -392,7 +393,7 @@ func (e *EventDispatcherManager) NewTableTriggerEventDispatcher(id *heartbeatpb.
 	err := e.newDispatchers([]dispatcherCreateInfo{
 		{
 			Id:        common.NewDispatcherIDFromPB(id),
-			TableSpan: heartbeatpb.DDLSpan,
+			TableSpan: common.DDLSpan,
 			StartTs:   startTs,
 			SchemaID:  0,
 		},
@@ -561,7 +562,8 @@ func (e *EventDispatcherManager) newDispatchers(infos []dispatcherCreateInfo, re
 	log.Info("batch create new dispatchers",
 		zap.Stringer("changefeedID", e.changefeedID),
 		zap.Int("count", len(dispatcherIds)),
-		zap.Duration("duration", time.Since(start)))
+		zap.Duration("duration", time.Since(start)),
+	)
 	return nil
 }
 

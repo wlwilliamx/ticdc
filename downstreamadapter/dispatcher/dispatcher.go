@@ -36,6 +36,8 @@ import (
 	"go.uber.org/zap"
 )
 
+var _ EventDispatcher = (*Dispatcher)(nil)
+
 // EventDispatcher is the interface that responsible for receiving events from Event Service
 type EventDispatcher interface {
 	GetId() common.DispatcherID
@@ -209,7 +211,7 @@ func (d *Dispatcher) InitializeTableSchemaStore(schemaInfo []*heartbeatpb.Schema
 	// Only the table trigger event dispatcher need to create a tableSchemaStore
 	// Because we only need to calculate the tableNames or TableIds in the sink
 	// when the event dispatcher manager have table trigger event dispatcher
-	if !d.tableSpan.Equal(heartbeatpb.DDLSpan) {
+	if !d.tableSpan.Equal(common.DDLSpan) {
 		log.Error("InitializeTableSchemaStore should only be received by table trigger event dispatcher", zap.Any("dispatcher", d.id))
 		return false, apperror.ErrChangefeedInitTableTriggerEventDispatcherFailed.
 			GenWithStackByArgs("InitializeTableSchemaStore should only be received by table trigger event dispatcher")
@@ -424,7 +426,6 @@ func (d *Dispatcher) GetHeartBeatInfo(h *HeartBeatInfo) {
 	h.Watermark.ResolvedTs = d.GetResolvedTs()
 	h.Id = d.GetId()
 	h.ComponentStatus = d.GetComponentStatus()
-	h.TableSpan = d.GetTableSpan()
 	h.IsRemoving = d.GetRemovingStatus()
 }
 

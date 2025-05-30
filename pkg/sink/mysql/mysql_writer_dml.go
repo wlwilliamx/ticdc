@@ -415,8 +415,9 @@ func (w *Writer) generateBatchSQLInUnsafeMode(events []*commonEvent.DMLEvent) ([
 			if rowType == prevType {
 				sql, values := w.generateNormalSQLs(events)
 				log.Info("normal sql should be", zap.Any("sql", sql), zap.Any("values", values))
-				log.Panic("invalid row changes", zap.Any("rowChanges", rowChanges),
-					zap.Any("prevType", prevType), zap.Any("currentType", rowType), zap.Any("i", i))
+				log.Panic("invalid row changes", zap.String("schemaName", tableInfo.GetSchemaName()),
+					zap.String("tableName", tableInfo.GetTableName()), zap.Any("rowChanges", rowChanges),
+					zap.Any("prevType", prevType), zap.Any("currentType", rowType))
 			}
 			prevType = rowType
 		}

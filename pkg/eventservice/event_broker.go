@@ -543,6 +543,7 @@ func (c *eventBroker) doScan(ctx context.Context, task scanTask, idx int) {
 				log.Error("expect a DMLEvent, but got", zap.Any("event", e))
 				continue
 			}
+
 			c.sendDML(ctx, remoteID, dmls, task)
 		case pevent.TypeDDLEvent:
 			ddl, ok := e.(*pevent.DDLEvent)

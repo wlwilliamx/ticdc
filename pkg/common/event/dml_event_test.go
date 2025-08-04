@@ -45,19 +45,19 @@ func TestDMLEventBasicEncodeAndDecode(t *testing.T) {
 		err := e.AppendRow(&common.RawKVEntry{
 			OpType: common.OpTypePut,
 			Value:  []byte("value1"),
-		}, mockDecodeRawKVToChunk)
+		}, mockDecodeRawKVToChunk, nil)
 		require.Nil(t, err)
 		// update
 		err = e.AppendRow(&common.RawKVEntry{
 			OpType:   common.OpTypePut,
 			Value:    []byte("value1"),
 			OldValue: []byte("old_value1"),
-		}, mockDecodeRawKVToChunk)
+		}, mockDecodeRawKVToChunk, nil)
 		require.Nil(t, err)
 		// delete
 		err = e.AppendRow(&common.RawKVEntry{
 			OpType: common.OpTypeDelete,
-		}, mockDecodeRawKVToChunk)
+		}, mockDecodeRawKVToChunk, nil)
 		require.Nil(t, err)
 	}
 	// TableInfo is not encoded, for test comparison purpose, set it to nil.

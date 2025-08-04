@@ -86,7 +86,7 @@ func runFilter(cmd *cobra.Command, args []string) {
 			fmt.Printf("DDL: %s, should be discard by event filter rule\n", ddl)
 			return
 		}
-		ignored, err := ft.ShouldIgnoreDDLEvent(&model.DDLEvent{
+		ignored, err := ft.ShouldSkipDDLEvent(&model.DDLEvent{
 			StartTs: uint64(0),
 			Query:   ddl,
 			Type:    ddlType,

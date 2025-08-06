@@ -271,9 +271,9 @@ type DMLEvent struct {
 	ApproximateSize int64 `json:"approximate_size"`
 	// RowTypes is the types of every row in the transaction.
 
-	RowTypes []common.RowType `json:"row_types"
+	RowTypes []common.RowType `json:"row_types"`
 	// RowKeys is the keys of every row in the transaction.
-	RowKeys [][]byte `json:"row_keys"``
+	RowKeys [][]byte `json:"row_keys"`
 	// Rows shares BatchDMLEvent rows
 	Rows *chunk.Chunk `json:"-"`
 

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	bf "github.com/pingcap/ticdc/pkg/binlog-filter"
+	"github.com/pingcap/ticdc/pkg/common"
 	"github.com/pingcap/ticdc/pkg/config"
 	"github.com/pingcap/tidb/pkg/meta/model"
 	"github.com/pingcap/tidb/pkg/parser/ast"
@@ -25,8 +26,6 @@ import (
 	"github.com/pingcap/tidb/pkg/types"
 	"github.com/pingcap/tidb/pkg/util/chunk"
 	"github.com/stretchr/testify/require"
-
-	"github.com/pingcap/ticdc/pkg/common"
 )
 
 // Helper to create a model.ColumnInfo

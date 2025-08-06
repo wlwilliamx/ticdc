@@ -18,13 +18,12 @@ import (
 
 	"github.com/pingcap/errors"
 	bf "github.com/pingcap/ticdc/pkg/binlog-filter"
+	"github.com/pingcap/ticdc/pkg/common"
 	"github.com/pingcap/ticdc/pkg/config"
 	cerror "github.com/pingcap/ticdc/pkg/errors"
 	"github.com/pingcap/tidb/pkg/meta/model"
 	timodel "github.com/pingcap/tidb/pkg/meta/model"
 	"github.com/stretchr/testify/require"
-
-	"github.com/pingcap/ticdc/pkg/common"
 )
 
 func TestSQLEventFilterDML(t *testing.T) {

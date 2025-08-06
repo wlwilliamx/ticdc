@@ -1,4 +1,4 @@
-// Copyright 2022 PingCAP, Inc.
+// Copyright 2025 PingCAP, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,500 +13,503 @@
 
 package filter
 
-// func TestShouldSkipDDL(t *testing.T) {
-// 	t.Parallel()
-// 	type innerCase struct {
-// 		schema    string
-// 		table     string
-// 		preSchema string
-// 		preTable  string
-// 		query     string
-// 		ddlType   timodel.ActionType
-// 		skip      bool
-// 	}
+import (
+	"testing"
 
-// 	type testCase struct {
-// 		cfg   *config.FilterConfig
-// 		cases []innerCase
-// 		err   error
-// 	}
+	"github.com/pingcap/errors"
+	bf "github.com/pingcap/ticdc/pkg/binlog-filter"
+	"github.com/pingcap/ticdc/pkg/config"
+	cerror "github.com/pingcap/ticdc/pkg/errors"
+	"github.com/pingcap/tidb/pkg/meta/model"
+	timodel "github.com/pingcap/tidb/pkg/meta/model"
+	"github.com/stretchr/testify/require"
 
-// 	// filter all ddl
-// 	case1 := testCase{
-// 		cfg: &config.FilterConfig{
-// 			EventFilters: []*config.EventFilterRule{
-// 				{
-// 					Matcher:     []string{"test.t1"},
-// 					IgnoreEvent: []bf.EventType{bf.AllDDL},
-// 				},
-// 			},
-// 		},
-// 		cases: []innerCase{
-// 			{
-// 				schema:  "test",
-// 				table:   "t1",
-// 				query:   "alter table t1 modify column age int",
-// 				ddlType: timodel.ActionModifyColumn,
-// 				skip:    true,
-// 			},
-// 			{
-// 				schema:  "test",
-// 				table:   "t1",
-// 				query:   "create table t1(id int primary key)",
-// 				ddlType: timodel.ActionCreateTable,
-// 				skip:    true,
-// 			},
-// 			{
-// 				schema:  "test",
-// 				table:   "t2", // table name not match
-// 				query:   "alter table t2 modify column age int",
-// 				ddlType: timodel.ActionModifyColumn,
-// 				skip:    false,
-// 			},
-// 			{
-// 				schema:  "test2", // schema name not match
-// 				table:   "t1",
-// 				query:   "alter table t1 modify column age int",
-// 				ddlType: timodel.ActionModifyColumn,
-// 				skip:    false,
-// 			},
-// 		},
-// 	}
-// 	f, err := newSQLEventFilter(case1.cfg)
-// 	require.True(t, errors.ErrorEqual(err, case1.err), "case: %+s", err)
-// 	for _, c := range case1.cases {
-// 		ddl := &model.DDLEvent{
-// 			TableInfo: &model.TableInfo{
-// 				TableName: model.TableName{
-// 					Schema: c.schema,
-// 					Table:  c.table,
-// 				},
-// 			},
-// 			Query: c.query,
-// 			Type:  c.ddlType,
-// 		}
-// 		skip, err := f.shouldSkipDDL(ddl)
-// 		require.NoError(t, err)
-// 		require.Equal(t, c.skip, skip, "case: %+v", c)
-// 	}
+	"github.com/pingcap/ticdc/pkg/common"
+)
 
-// 	// filter some ddl
-// 	case2 := testCase{
-// 		cfg: &config.FilterConfig{
-// 			EventFilters: []*config.EventFilterRule{
-// 				{
-// 					Matcher:     []string{"*.t1"},
-// 					IgnoreEvent: []bf.EventType{bf.DropDatabase, bf.DropSchema},
-// 				},
-// 			},
-// 		},
-// 		cases: []innerCase{
-// 			{
-// 				schema:  "test",
-// 				table:   "t1",
-// 				query:   "alter table t1 modify column age int",
-// 				ddlType: timodel.ActionModifyColumn,
-// 				skip:    false,
-// 			},
-// 			{
-// 				schema:  "test",
-// 				table:   "t1",
-// 				query:   "alter table t1 drop column age",
-// 				ddlType: timodel.ActionDropColumn,
-// 				skip:    false,
-// 			},
-// 			{
-// 				schema:  "test2",
-// 				table:   "t1",
-// 				query:   "drop database test2",
-// 				ddlType: timodel.ActionDropSchema,
-// 				skip:    true,
-// 			},
-// 			{
-// 				schema:  "test3",
-// 				table:   "t1",
-// 				query:   "drop index i3 on t1",
-// 				ddlType: timodel.ActionDropIndex,
-// 				skip:    false,
-// 			},
-// 		},
-// 	}
-// 	f, err = newSQLEventFilter(case2.cfg)
-// 	require.True(t, errors.ErrorEqual(err, case2.err), "case: %+s", err)
-// 	for _, c := range case2.cases {
-// 		ddl := &model.DDLEvent{
-// 			TableInfo: &model.TableInfo{
-// 				TableName: model.TableName{
-// 					Schema: c.schema,
-// 					Table:  c.table,
-// 				},
-// 			},
-// 			Query: c.query,
-// 			Type:  c.ddlType,
-// 		}
-// 		skip, err := f.shouldSkipDDL(ddl)
-// 		require.NoError(t, err)
-// 		require.Equal(t, c.skip, skip, "case: %+v", c)
-// 	}
+func TestSQLEventFilterDML(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name            string
+		cfg             *config.FilterConfig
+		schema          string
+		table           string
+		dmlType         common.RowType
+		shouldBeSkipped bool
+	}{
+		{
+			name: "ignore insert event",
+			cfg: &config.FilterConfig{
+				EventFilters: []*config.EventFilterRule{
+					{
+						Matcher:     []string{"test.*"},
+						IgnoreEvent: []bf.EventType{bf.InsertEvent},
+					},
+				},
+			},
+			schema:          "test",
+			table:           "t1",
+			dmlType:         common.RowTypeInsert,
+			shouldBeSkipped: true,
+		},
+		{
+			name: "don't ignore update event",
+			cfg: &config.FilterConfig{
+				EventFilters: []*config.EventFilterRule{
+					{
+						Matcher:     []string{"test.*"},
+						IgnoreEvent: []bf.EventType{bf.InsertEvent},
+					},
+				},
+			},
+			schema:          "test",
+			table:           "t1",
+			dmlType:         common.RowTypeUpdate,
+			shouldBeSkipped: false,
+		},
+		{
+			name: "ignore all dml events",
+			cfg: &config.FilterConfig{
+				EventFilters: []*config.EventFilterRule{
+					{
+						Matcher:     []string{"test.*"},
+						IgnoreEvent: []bf.EventType{bf.AllDML},
+					},
+				},
+			},
+			schema:          "test",
+			table:           "t1",
+			dmlType:         common.RowTypeDelete,
+			shouldBeSkipped: true,
+		},
+		{
+			name: "matcher does not match",
+			cfg: &config.FilterConfig{
+				EventFilters: []*config.EventFilterRule{
+					{
+						Matcher:     []string{"otherdb.*"},
+						IgnoreEvent: []bf.EventType{bf.AllDML},
+					},
+				},
+			},
+			schema:          "test",
+			table:           "t1",
+			dmlType:         common.RowTypeInsert,
+			shouldBeSkipped: false,
+		},
+	}
 
-// 	// filter ddl by IgnoreSQL
-// 	case3 := testCase{
-// 		cfg: &config.FilterConfig{
-// 			EventFilters: []*config.EventFilterRule{
-// 				{
-// 					Matcher:   []string{"*.t1"},
-// 					IgnoreSQL: []string{"MODIFY COLUMN", "DROP COLUMN", "^DROP DATABASE"},
-// 				},
-// 			},
-// 		},
-// 		cases: []innerCase{
-// 			{
-// 				schema:  "test",
-// 				table:   "t1",
-// 				query:   "ALTER TABLE t1 MODIFY COLUMN age int(11) NOT NULL",
-// 				ddlType: timodel.ActionModifyColumn,
-// 				skip:    true,
-// 			},
-// 			{
-// 				schema:  "test",
-// 				table:   "t1",
-// 				query:   "ALTER TABLE t1 DROP COLUMN age",
-// 				ddlType: timodel.ActionDropColumn,
-// 				skip:    true,
-// 			},
-// 			{ // no table name
-// 				schema:  "test2",
-// 				query:   "DROP DATABASE test",
-// 				ddlType: timodel.ActionDropSchema,
-// 				skip:    true,
-// 			},
-// 			{
-// 				schema:  "test3",
-// 				table:   "t1",
-// 				query:   "Drop Index i1 on test3.t1",
-// 				ddlType: timodel.ActionDropIndex,
-// 				skip:    false,
-// 			},
-// 		},
-// 	}
-// 	f, err = newSQLEventFilter(case3.cfg)
-// 	require.True(t, errors.ErrorEqual(err, case3.err), "case: %+s", err)
-// 	for _, c := range case3.cases {
-// 		ddl := &model.DDLEvent{
-// 			TableInfo: &model.TableInfo{
-// 				TableName: model.TableName{
-// 					Schema: c.schema,
-// 					Table:  c.table,
-// 				},
-// 			},
-// 			Query: c.query,
-// 			Type:  c.ddlType,
-// 		}
-// 		skip, err := f.shouldSkipDDL(ddl)
-// 		require.NoError(t, err)
-// 		require.Equal(t, c.skip, skip, "case: %+v", c)
-// 	}
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			filter, err := newSQLEventFilter(cs.cfg)
+			require.NoError(t, err)
+			skip, err := filter.shouldSkipDML(cs.schema, cs.table, cs.dmlType)
+			require.NoError(t, err)
+			require.Equal(t, cs.shouldBeSkipped, skip)
+		})
+	}
+}
 
-// 	// config error
-// 	case4 := testCase{
-// 		cfg: &config.FilterConfig{
-// 			EventFilters: []*config.EventFilterRule{
-// 				{
-// 					Matcher:     []string{"*.t1"},
-// 					IgnoreEvent: []bf.EventType{bf.EventType("aa")},
-// 				},
-// 			},
-// 		},
-// 		err: cerror.ErrInvalidIgnoreEventType,
-// 	}
-// 	_, err = newSQLEventFilter(case4.cfg)
-// 	require.True(t, errors.ErrorEqual(err, case4.err), "case: %+s", err)
+func TestSQLEventFilterDDL(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name            string
+		cfg             *config.FilterConfig
+		schema          string
+		table           string
+		ddlType         model.ActionType
+		query           string
+		shouldBeSkipped bool
+	}{
+		{
+			name: "ignore create table event",
+			cfg: &config.FilterConfig{
+				EventFilters: []*config.EventFilterRule{
+					{
+						Matcher:     []string{"test.*"},
+						IgnoreEvent: []bf.EventType{bf.CreateTable},
+					},
+				},
+			},
+			schema: "test", table: "t1", ddlType: model.ActionCreateTable, query: "create table t1(id int)",
+			shouldBeSkipped: true,
+		},
+		{
+			name: "ignore create database by alias",
+			cfg: &config.FilterConfig{
+				EventFilters: []*config.EventFilterRule{
+					{
+						Matcher:     []string{"test.*"},
+						IgnoreEvent: []bf.EventType{bf.CreateDatabase},
+					},
+				},
+			},
+			schema: "test", table: "", ddlType: model.ActionCreateSchema, query: "create database test",
+			shouldBeSkipped: true,
+		},
+		{
+			name: "ignore add column by ignoring alter table",
+			cfg: &config.FilterConfig{
+				EventFilters: []*config.EventFilterRule{
+					{
+						Matcher:     []string{"test.*"},
+						IgnoreEvent: []bf.EventType{bf.AlterTable},
+					},
+				},
+			},
+			schema: "test", table: "t1", ddlType: model.ActionAddColumn, query: "alter table t1 add column c1 int",
+			shouldBeSkipped: true,
+		},
+		{
+			name: "ignore rename index specifically, not all alter table",
+			cfg: &config.FilterConfig{
+				EventFilters: []*config.EventFilterRule{
+					{
+						Matcher:     []string{"test.*"},
+						IgnoreEvent: []bf.EventType{bf.RenameIndex},
+					},
+				},
+			},
+			schema: "test", table: "t1", ddlType: model.ActionRenameIndex, query: "alter table t1 rename index i1 to i2",
+			shouldBeSkipped: true,
+		},
+		{
+			name: "don't ignore add column when only rename index is ignored",
+			cfg: &config.FilterConfig{
+				EventFilters: []*config.EventFilterRule{
+					{
+						Matcher:     []string{"test.*"},
+						IgnoreEvent: []bf.EventType{bf.RenameIndex},
+					},
+				},
+			},
+			schema: "test", table: "t1", ddlType: model.ActionAddColumn, query: "alter table t1 add column c1 int",
+			shouldBeSkipped: false,
+		},
+		{
+			name: "ignore ddl by sql regex",
+			cfg: &config.FilterConfig{
+				EventFilters: []*config.EventFilterRule{
+					{
+						Matcher:   []string{"test.*"},
+						IgnoreSQL: []string{"^DROP TABLE", "add column"},
+					},
+				},
+			},
+			schema: "test", table: "t1", ddlType: model.ActionDropTable, query: "DROP TABLE t1",
+			shouldBeSkipped: true,
+		},
+		{
+			name: "ignore ddl by sql regex (case 2)",
+			cfg: &config.FilterConfig{
+				EventFilters: []*config.EventFilterRule{
+					{
+						Matcher:   []string{"test.*"},
+						IgnoreSQL: []string{"^DROP TABLE", "add column"},
+					},
+				},
+			},
+			schema: "test", table: "t1", ddlType: model.ActionAddColumn, query: "alter table t1 add column c1 int",
+			shouldBeSkipped: true,
+		},
+		{
+			name: "don't ignore ddl by sql regex",
+			cfg: &config.FilterConfig{
+				EventFilters: []*config.EventFilterRule{
+					{
+						Matcher:   []string{"test.*"},
+						IgnoreSQL: []string{"^DROP TABLE"},
+					},
+				},
+			},
+			schema: "test", table: "t1", ddlType: model.ActionCreateTable, query: "CREATE TABLE t1(id int)",
+			shouldBeSkipped: false,
+		},
+		{
+			name: "ignore all ddl",
+			cfg: &config.FilterConfig{
+				EventFilters: []*config.EventFilterRule{
+					{
+						Matcher:     []string{"test.*"},
+						IgnoreEvent: []bf.EventType{bf.AllDDL},
+					},
+				},
+			},
+			schema: "test", table: "t1", ddlType: model.ActionCreateTable, query: "CREATE TABLE t1(id int)",
+			shouldBeSkipped: true,
+		},
+	}
 
-// 	// config error
-// 	case5 := testCase{
-// 		cfg: &config.FilterConfig{
-// 			EventFilters: []*config.EventFilterRule{
-// 				{
-// 					Matcher:   []string{"*.t1"},
-// 					IgnoreSQL: []string{"--6"}, // this is a valid regx
-// 				},
-// 			},
-// 		},
-// 	}
-// 	_, err = newSQLEventFilter(case5.cfg)
-// 	require.True(t, errors.ErrorEqual(err, case5.err), "case: %+s", err)
+	for _, cs := range cases {
+		t.Run(cs.name, func(t *testing.T) {
+			filter, err := newSQLEventFilter(cs.cfg)
+			require.NoError(t, err)
+			skip, err := filter.shouldSkipDDL(cs.schema, cs.table, cs.query, cs.ddlType)
+			require.NoError(t, err)
+			require.Equal(t, cs.shouldBeSkipped, skip)
+		})
+	}
+}
 
-// 	// cover all ddl event types
-// 	allEventTypes := make([]bf.EventType, 0, len(ddlWhiteListMap))
-// 	for _, et := range ddlWhiteListMap {
-// 		allEventTypes = append(allEventTypes, et)
-// 	}
-// 	innerCases := make([]innerCase, 0, len(ddlWhiteListMap))
-// 	for at := range ddlWhiteListMap {
-// 		innerCases = append(innerCases, innerCase{
-// 			schema:  "test",
-// 			table:   "t1",
-// 			query:   "no matter",
-// 			ddlType: at,
-// 			skip:    true,
-// 		})
-// 	}
-// 	case6 := testCase{
-// 		cfg: &config.FilterConfig{
-// 			EventFilters: []*config.EventFilterRule{
-// 				{
-// 					Matcher:     []string{"*.t1"},
-// 					IgnoreEvent: allEventTypes,
-// 				},
-// 			},
-// 		},
-// 		cases: innerCases,
-// 	}
-// 	f, err = newSQLEventFilter(case6.cfg)
-// 	require.NoError(t, err)
-// 	for _, c := range case6.cases {
-// 		ddl := &model.DDLEvent{
-// 			TableInfo: &model.TableInfo{
-// 				TableName: model.TableName{
-// 					Schema: c.schema,
-// 					Table:  c.table,
-// 				},
-// 			},
-// 			Query: c.query,
-// 			Type:  c.ddlType,
-// 		}
-// 		skip, err := f.shouldSkipDDL(ddl)
-// 		if c.ddlType == timodel.ActionRenameTable || c.ddlType == timodel.ActionRenameTables {
-// 			require.ErrorIs(t, err, cerror.ErrTableIneligible)
-// 			require.Equal(t, true, skip, "case: %+v", c)
-// 		} else {
-// 			require.NoError(t, err)
-// 			require.Equal(t, c.skip, skip, "case: %+v", c)
-// 		}
-// 	}
-// 	case7 := testCase{
-// 		cfg: &config.FilterConfig{
-// 			Rules: []string{"*.t1", "*.t2"},
-// 			EventFilters: []*config.EventFilterRule{
-// 				{
-// 					Matcher:     []string{"*.t1"},
-// 					IgnoreEvent: allEventTypes,
-// 				},
-// 			},
-// 		},
-// 		cases: []innerCase{
-// 			{
-// 				schema:    "test",
-// 				table:     "t2",
-// 				preSchema: "test",
-// 				preTable:  "t1",
-// 				query:     "no matter",
-// 				ddlType:   timodel.ActionRenameTable,
-// 				skip:      true,
-// 			},
-// 			{
-// 				schema:    "test",
-// 				table:     "t3",
-// 				preSchema: "test",
-// 				preTable:  "t1",
-// 				query:     "no matter",
-// 				ddlType:   timodel.ActionRenameTable,
-// 				skip:      true,
-// 			},
-// 			{
-// 				schema:    "test",
-// 				table:     "t1",
-// 				preSchema: "test",
-// 				preTable:  "t2",
-// 				query:     "no matter",
-// 				ddlType:   timodel.ActionRenameTable,
-// 				skip:      false,
-// 			},
-// 		},
-// 	}
-// 	f, err = newSQLEventFilter(case7.cfg)
-// 	require.NoError(t, err)
-// 	for _, c := range case7.cases {
-// 		ddl := &model.DDLEvent{
-// 			TableInfo: &model.TableInfo{
-// 				TableName: model.TableName{
-// 					Schema: c.schema,
-// 					Table:  c.table,
-// 				},
-// 			},
-// 			PreTableInfo: &model.TableInfo{
-// 				TableName: model.TableName{
-// 					Schema: c.preSchema,
-// 					Table:  c.preTable,
-// 				},
-// 			},
-// 			Query: c.query,
-// 			Type:  c.ddlType,
-// 		}
-// 		skip, err := f.shouldSkipDDL(ddl)
-// 		require.NoError(t, err)
-// 		require.Equal(t, c.skip, skip, "case: %+v", c)
-// 	}
-// }
+func TestSQLEventFilterInvalidConfig(t *testing.T) {
+	t.Parallel()
+	// invalid event type
+	cfg := &config.FilterConfig{
+		EventFilters: []*config.EventFilterRule{
+			{
+				Matcher:     []string{"test.*"},
+				IgnoreEvent: []bf.EventType{"invalid-event"},
+			},
+		},
+	}
+	_, err := newSQLEventFilter(cfg)
+	require.Error(t, err)
+	require.Regexp(t, "invalid ignore event type", err.Error())
 
-// func TestShouldSkipDML(t *testing.T) {
-// 	t.Parallel()
-// 	type innerCase struct {
-// 		schema     string
-// 		table      string
-// 		preColumns string
-// 		columns    string
-// 		skip       bool
-// 	}
+	// invalid matcher
+	cfg = &config.FilterConfig{
+		EventFilters: []*config.EventFilterRule{
+			{
+				Matcher: []string{"test.t[1"}, // invalid regex in matcher
+			},
+		},
+	}
+	_, err = newSQLEventFilter(cfg)
+	require.Error(t, err)
+	require.Regexp(t, "ErrFilterRuleInvalid", err.Error())
 
-// 	type testCase struct {
-// 		name  string
-// 		cfg   *config.FilterConfig
-// 		cases []innerCase
-// 	}
+	// invalid sql regex
+	cfg = &config.FilterConfig{
+		EventFilters: []*config.EventFilterRule{
+			{
+				Matcher:   []string{"test.t1"},
+				IgnoreSQL: []string{"^["},
+			},
+		},
+	}
+	_, err = newSQLEventFilter(cfg)
+	require.Error(t, err)
+	require.Regexp(t, "ErrFilterRuleInvalid", err.Error())
+}
 
-// 	testCases := []testCase{
-// 		{
-// 			name: "dml-filter-test",
-// 			cfg: &config.FilterConfig{
-// 				EventFilters: []*config.EventFilterRule{
-// 					{
-// 						Matcher:     []string{"test1.allDml"},
-// 						IgnoreEvent: []bf.EventType{bf.AllDML},
-// 					},
-// 					{
-// 						Matcher:     []string{"test2.insert"},
-// 						IgnoreEvent: []bf.EventType{bf.InsertEvent},
-// 					},
-// 					{
-// 						Matcher:     []string{"*.delete"},
-// 						IgnoreEvent: []bf.EventType{bf.DeleteEvent},
-// 					},
-// 				},
-// 			},
-// 			cases: []innerCase{
-// 				{ // match test1.allDML
-// 					schema:  "test1",
-// 					table:   "allDml",
-// 					columns: "insert",
-// 					skip:    true,
-// 				},
-// 				{
-// 					schema:     "test1",
-// 					table:      "allDml",
-// 					preColumns: "delete",
-// 					skip:       true,
-// 				},
-// 				{
-// 					schema:     "test1",
-// 					table:      "allDml",
-// 					preColumns: "update",
-// 					columns:    "update",
-// 					skip:       true,
-// 				},
-// 				{ // not match
-// 					schema:  "test",
-// 					table:   "t1",
-// 					columns: "insert",
-// 					skip:    false,
-// 				},
-// 				{ // match test2.insert
-// 					schema:  "test2",
-// 					table:   "insert",
-// 					columns: "insert",
-// 					skip:    true,
-// 				},
-// 				{
-// 					schema:     "test2",
-// 					table:      "insert",
-// 					preColumns: "delete",
-// 					skip:       false,
-// 				},
-// 				{
-// 					schema:     "test2",
-// 					table:      "insert",
-// 					preColumns: "update",
-// 					columns:    "update",
-// 					skip:       false,
-// 				},
-// 				{
-// 					schema:  "noMatter",
-// 					table:   "delete",
-// 					columns: "insert",
-// 					skip:    false,
-// 				},
-// 				{
-// 					schema:     "noMatter",
-// 					table:      "delete",
-// 					preColumns: "update",
-// 					columns:    "update",
-// 					skip:       false,
-// 				},
-// 				{
-// 					schema:     "noMatter",
-// 					table:      "delete",
-// 					preColumns: "delete",
-// 					skip:       true,
-// 				},
-// 			},
-// 		},
-// 	}
+func TestShouldSkipDDL(t *testing.T) {
+	t.Parallel()
+	type innerCase struct {
+		schema  string
+		table   string
+		query   string
+		ddlType timodel.ActionType
+		skip    bool
+	}
 
-// 	for _, tc := range testCases {
-// 		tc := tc
-// 		t.Run(tc.name, func(t *testing.T) {
-// 			t.Parallel()
-// 			f, err := newSQLEventFilter(tc.cfg)
-// 			require.NoError(t, err)
-// 			for _, c := range tc.cases {
-// 				event := &model.RowChangedEvent{
-// 					TableInfo: &model.TableInfo{
-// 						TableName: model.TableName{
-// 							Schema: c.schema,
-// 							Table:  c.table,
-// 						},
-// 					},
-// 				}
-// 				if c.columns != "" {
-// 					event.Columns = []*model.ColumnData{{Value: c.columns}}
-// 				}
-// 				if c.preColumns != "" {
-// 					event.PreColumns = []*model.ColumnData{{Value: c.preColumns}}
-// 				}
-// 				skip, err := f.shouldSkipDML(event)
-// 				require.NoError(t, err)
-// 				require.Equal(t, c.skip, skip, "case: %+v", c)
-// 			}
-// 		})
-// 	}
-// }
+	type testCase struct {
+		cfg   *config.FilterConfig
+		cases []innerCase
+		err   error
+	}
 
-// func TestVerifyIgnoreEvents(t *testing.T) {
-// 	t.Parallel()
-// 	type testCase struct {
-// 		ignoreEvent []bf.EventType
-// 		err         error
-// 	}
+	// filter all ddl
+	case1 := testCase{
+		cfg: &config.FilterConfig{
+			EventFilters: []*config.EventFilterRule{
+				{
+					Matcher:     []string{"test.t1"},
+					IgnoreEvent: []bf.EventType{bf.AllDDL},
+				},
+			},
+		},
+		cases: []innerCase{
+			{
+				schema:  "test",
+				table:   "t1",
+				query:   "alter table t1 modify column age int",
+				ddlType: timodel.ActionModifyColumn,
+				skip:    true,
+			},
+			{
+				schema:  "test",
+				table:   "t1",
+				query:   "create table t1(id int primary key)",
+				ddlType: timodel.ActionCreateTable,
+				skip:    true,
+			},
+			{
+				schema:  "test",
+				table:   "t2", // table name not match
+				query:   "alter table t2 modify column age int",
+				ddlType: timodel.ActionModifyColumn,
+				skip:    false,
+			},
+			{
+				schema:  "test2", // schema name not match
+				table:   "t1",
+				query:   "alter table t1 modify column age int",
+				ddlType: timodel.ActionModifyColumn,
+				skip:    false,
+			},
+		},
+	}
+	f, err := newSQLEventFilter(case1.cfg)
+	require.True(t, errors.ErrorEqual(err, case1.err), "case: %+s", err)
+	for _, c := range case1.cases {
+		skip, err := f.shouldSkipDDL(c.schema, c.table, c.query, c.ddlType)
+		require.NoError(t, err)
+		require.Equal(t, c.skip, skip, "case: %+v", c)
+	}
 
-// 	cases := make([]testCase, len(SupportedEventTypes()))
-// 	for i, eventType := range SupportedEventTypes() {
-// 		cases[i] = testCase{
-// 			ignoreEvent: []bf.EventType{eventType},
-// 			err:         nil,
-// 		}
-// 	}
+	// filter some ddl
+	case2 := testCase{
+		cfg: &config.FilterConfig{
+			EventFilters: []*config.EventFilterRule{
+				{
+					Matcher:     []string{"*.t1"},
+					IgnoreEvent: []bf.EventType{bf.DropDatabase, bf.DropSchema},
+				},
+			},
+		},
+		cases: []innerCase{
+			{
+				schema:  "test",
+				table:   "t1",
+				query:   "alter table t1 modify column age int",
+				ddlType: timodel.ActionModifyColumn,
+				skip:    false,
+			},
+			{
+				schema:  "test",
+				table:   "t1",
+				query:   "alter table t1 drop column age",
+				ddlType: timodel.ActionDropColumn,
+				skip:    false,
+			},
+			{
+				schema:  "test2",
+				table:   "t1",
+				query:   "drop database test2",
+				ddlType: timodel.ActionDropSchema,
+				skip:    true,
+			},
+			{
+				schema:  "test3",
+				table:   "t1",
+				query:   "drop index i3 on t1",
+				ddlType: timodel.ActionDropIndex,
+				skip:    false,
+			},
+		},
+	}
+	f, err = newSQLEventFilter(case2.cfg)
+	require.True(t, errors.ErrorEqual(err, case2.err), "case: %+s", err)
+	for _, c := range case2.cases {
+		skip, err := f.shouldSkipDDL(c.schema, c.table, c.query, c.ddlType)
+		require.NoError(t, err)
+		require.Equal(t, c.skip, skip, "case: %+v", c)
+	}
 
-// 	cases = append(cases, testCase{
-// 		ignoreEvent: []bf.EventType{bf.EventType("unknown")},
-// 		err:         cerror.ErrInvalidIgnoreEventType,
-// 	})
+	// filter ddl by IgnoreSQL
+	case3 := testCase{
+		cfg: &config.FilterConfig{
+			EventFilters: []*config.EventFilterRule{
+				{
+					Matcher:   []string{"*.t1"},
+					IgnoreSQL: []string{"MODIFY COLUMN", "DROP COLUMN", "^DROP DATABASE"},
+				},
+			},
+		},
+		cases: []innerCase{
+			{
+				schema:  "test",
+				table:   "t1",
+				query:   "ALTER TABLE t1 MODIFY COLUMN age int(11) NOT NULL",
+				ddlType: timodel.ActionModifyColumn,
+				skip:    true,
+			},
+			{
+				schema:  "test",
+				table:   "t1",
+				query:   "ALTER TABLE t1 DROP COLUMN age",
+				ddlType: timodel.ActionDropColumn,
+				skip:    true,
+			},
+			{ // no table name
+				schema:  "test2",
+				query:   "DROP DATABASE test",
+				ddlType: timodel.ActionDropSchema,
+				skip:    true,
+			},
+			{
+				schema:  "test3",
+				table:   "t1",
+				query:   "Drop Index i1 on test3.t1",
+				ddlType: timodel.ActionDropIndex,
+				skip:    false,
+			},
+		},
+	}
+	f, err = newSQLEventFilter(case3.cfg)
+	require.True(t, errors.ErrorEqual(err, case3.err), "case: %+s", err)
+	for _, c := range case3.cases {
+		skip, err := f.shouldSkipDDL(c.schema, c.table, c.query, c.ddlType)
+		require.NoError(t, err)
+		require.Equal(t, c.skip, skip, "case: %+v", c)
+	}
 
-// 	cases = append(cases, testCase{
-// 		ignoreEvent: []bf.EventType{bf.AlterTable},
-// 		err:         nil,
-// 	})
+	// config error
+	case4 := testCase{
+		cfg: &config.FilterConfig{
+			EventFilters: []*config.EventFilterRule{
+				{
+					Matcher:     []string{"*.t1"},
+					IgnoreEvent: []bf.EventType{bf.EventType("aa")},
+				},
+			},
+		},
+		err: cerror.ErrInvalidIgnoreEventType,
+	}
+	_, err = newSQLEventFilter(case4.cfg)
+	require.True(t, errors.ErrorEqual(err, case4.err), "case: %+s", err)
 
-// 	for _, tc := range cases {
-// 		require.True(t, errors.ErrorEqual(tc.err, verifyIgnoreEvents(tc.ignoreEvent)))
-// 	}
-// }
+	// config error
+	case5 := testCase{
+		cfg: &config.FilterConfig{
+			EventFilters: []*config.EventFilterRule{
+				{
+					Matcher:   []string{"*.t1"},
+					IgnoreSQL: []string{"--6"}, // this is a valid regx
+				},
+			},
+		},
+	}
+	_, err = newSQLEventFilter(case5.cfg)
+	require.True(t, errors.ErrorEqual(err, case5.err), "case: %+s", err)
+}
+
+func TestVerifyIgnoreEvents(t *testing.T) {
+	t.Parallel()
+	type testCase struct {
+		ignoreEvent []bf.EventType
+		err         error
+	}
+
+	cases := make([]testCase, len(SupportedEventTypes()))
+	for i, eventType := range SupportedEventTypes() {
+		cases[i] = testCase{
+			ignoreEvent: []bf.EventType{eventType},
+			err:         nil,
+		}
+	}
+
+	cases = append(cases, testCase{
+		ignoreEvent: []bf.EventType{bf.EventType("unknown")},
+		err:         cerror.ErrInvalidIgnoreEventType,
+	})
+
+	cases = append(cases, testCase{
+		ignoreEvent: []bf.EventType{bf.AlterTable},
+		err:         nil,
+	})
+
+	for _, tc := range cases {
+		require.True(t, errors.ErrorEqual(tc.err, verifyIgnoreEvents(tc.ignoreEvent)))
+	}
+}

@@ -319,7 +319,7 @@ func (r *dmlExprFilterRule) skipDMLByExpression(
 	expr expression.Expression,
 ) (bool, error) {
 	if row.IsEmpty() || expr == nil {
-		return true, nil
+		return false, nil
 	}
 
 	d, err := expr.Eval(r.sessCtx.GetExprCtx().GetEvalCtx(), row)

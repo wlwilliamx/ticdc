@@ -270,14 +270,10 @@ type DMLEvent struct {
 	// it's based on the raw entry size, use for the sink throughput calculation.
 	ApproximateSize int64 `json:"approximate_size"`
 	// RowTypes is the types of every row in the transaction.
-<<<<<<< HEAD
-	RowTypes []common.RowType `json:"row_types"`
-=======
-	RowTypes []RowType `json:"row_types"`
-	// RowKeys is the keys of every row in the transaction.
-	RowKeys [][]byte `json:"row_keys"`
 
->>>>>>> upstream/master
+	RowTypes []common.RowType `json:"row_types"
+	// RowKeys is the keys of every row in the transaction.
+	RowKeys [][]byte `json:"row_keys"``
 	// Rows shares BatchDMLEvent rows
 	Rows *chunk.Chunk `json:"-"`
 
@@ -399,8 +395,8 @@ func (t *DMLEvent) AppendRow(raw *common.RawKVEntry,
 		for range count {
 			t.RowTypes = append(t.RowTypes, rowType)
 			keyCopy := make([]byte, len(raw.Key))
-		copy(keyCopy, raw.Key)
-		t.RowKeys = append(t.RowKeys, keyCopy)
+			copy(keyCopy, raw.Key)
+			t.RowKeys = append(t.RowKeys, keyCopy)
 		}
 		t.Length += 1
 		t.ApproximateSize += raw.GetSize()

@@ -43,17 +43,6 @@ const (
 )
 
 // Filter are safe for concurrent use.
-// TODO: find a better way to abstract this interface.
-// EventStore:
-// - ShouldIgnoreDMLEvent
-
-// SchemaStore:
-// - ShouldDiscardDDL
-// - ShouldIgnoreSchema
-// - ShouldIgnoreTable
-
-// DownstreamAdapter:
-// - ShouldSkipDDLEvent
 type Filter interface {
 	// ShouldIgnoreDML returns true if the DML event should not be handled.
 	ShouldIgnoreDML(dmlType common.RowType, preRow, row chunk.Row, ti *common.TableInfo) (bool, error)

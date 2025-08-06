@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/pingcap/ticdc/cmd/util"
 	"github.com/pingcap/ticdc/pkg/config"
 	"github.com/pingcap/ticdc/pkg/filter"
 	timodel "github.com/pingcap/tidb/pkg/meta/model"
@@ -48,12 +47,6 @@ func runFilter(cmd *cobra.Command, args []string) {
 	// fmt.Printf("Filter Rules: %v\n", filterRules)
 	// fmt.Printf("Schema Name: %s\n", schemaName)
 	// fmt.Printf("Table Name: %s\n", tableName)
-	cfg := &config.ReplicaConfig{}
-	err := util.StrictDecodeFile(cfgPath, "cdc filter helper", cfg)
-	if err != nil {
-		fmt.Printf("decode config file error: %v\n", err)
-		return
-	}
 	ft, err := filter.NewFilter(config.NewDefaultFilterConfig(), "UTC", false, false)
 	if err != nil {
 		fmt.Printf("filter create error: %v\n", err)

@@ -1506,7 +1506,7 @@ func extractTableInfoFuncForRemovePartitioning(event *PersistedDDLEvent, tableID
 
 func buildDDLEventCommon(rawEvent *PersistedDDLEvent, tableFilter filter.Filter, tiDBOnly bool) (commonEvent.DDLEvent, bool, error) {
 	var wrapTableInfo *common.TableInfo
-	// Note: not all ddl types will respect the `filtered` result, example: create tables, rename tables
+	// Note: not all ddl types will respect the `filtered` result: create tables, rename tables, rename table, exchange table partition.
 	filtered := false
 	if tableFilter != nil && rawEvent.SchemaName != "" && rawEvent.TableName != "" {
 		filtered, err := tableFilter.ShouldIgnoreDDL(

@@ -232,11 +232,7 @@ func (b *BatchDMLEvent) GetStartTs() common.Ts {
 }
 
 func (b *BatchDMLEvent) GetSize() int64 {
-	var size int64
-	for _, dml := range b.DMLEvents {
-		size += dml.GetSize()
-	}
-	return size
+	return b.Rows.MemoryUsage()
 }
 
 func (b *BatchDMLEvent) IsPaused() bool {
@@ -271,9 +267,17 @@ type DMLEvent struct {
 	// For an update event, it has two physical rows in the Rows chunk.
 	Length int32 `json:"length"`
 	// ApproximateSize is the approximate size of all rows in the transaction.
+	// it's based on the raw entry size, use for the sink throughput calculation.
 	ApproximateSize int64 `json:"approximate_size"`
 	// RowTypes is the types of every row in the transaction.
+<<<<<<< HEAD
 	RowTypes []common.RowType `json:"row_types"`
+=======
+	RowTypes []RowType `json:"row_types"`
+	// RowKeys is the keys of every row in the transaction.
+	RowKeys [][]byte `json:"row_keys"`
+
+>>>>>>> upstream/master
 	// Rows shares BatchDMLEvent rows
 	Rows *chunk.Chunk `json:"-"`
 
@@ -306,8 +310,8 @@ type DMLEvent struct {
 }
 
 func (t *DMLEvent) String() string {
-	return fmt.Sprintf("DMLEvent{Version: %d, DispatcherID: %s, Seq: %d, PhysicalTableID: %d, StartTs: %d, CommitTs: %d, Table: %v, Checksum: %v, Length: %d, ApproximateSize: %d}",
-		t.Version, t.DispatcherID.String(), t.Seq, t.PhysicalTableID, t.StartTs, t.CommitTs, t.TableInfo.TableName, t.Checksum, t.Length, t.ApproximateSize)
+	return fmt.Sprintf("DMLEvent{Version: %d, DispatcherID: %s, Seq: %d, PhysicalTableID: %d, StartTs: %d, CommitTs: %d, Table: %v, Checksum: %v, Length: %d, Size: %d}",
+		t.Version, t.DispatcherID.String(), t.Seq, t.PhysicalTableID, t.StartTs, t.CommitTs, t.TableInfo.TableName, t.Checksum, t.Length, t.GetSize())
 }
 
 // NewDMLEvent creates a new DMLEvent with the given parameters
@@ -394,9 +398,12 @@ func (t *DMLEvent) AppendRow(raw *common.RawKVEntry,
 
 		for range count {
 			t.RowTypes = append(t.RowTypes, rowType)
+			keyCopy := make([]byte, len(raw.Key))
+		copy(keyCopy, raw.Key)
+		t.RowKeys = append(t.RowKeys, keyCopy)
 		}
 		t.Length += 1
-		t.ApproximateSize += int64(len(raw.Key) + len(raw.Value) + len(raw.OldValue))
+		t.ApproximateSize += raw.GetSize()
 		if checksum != nil {
 			t.Checksum = append(t.Checksum, checksum)
 		}
@@ -471,12 +478,18 @@ func (t *DMLEvent) GetNextRow() (RowChange, bool) {
 		t.checksumOffset++
 	}
 	rowType := t.RowTypes[t.offset]
+	// RowKeys is available only when the event is created from RawKVEntry.
+	var rowKey []byte
+	if len(t.RowKeys) > t.offset {
+		rowKey = t.RowKeys[t.offset]
+	}
 	switch rowType {
 	case common.RowTypeInsert:
 		row := RowChange{
 			Row:      t.Rows.GetRow(t.PreviousTotalOffset + t.offset),
 			RowType:  rowType,
 			Checksum: checksum,
+			RowKey:   rowKey,
 		}
 		t.offset++
 		return row, true
@@ -485,6 +498,7 @@ func (t *DMLEvent) GetNextRow() (RowChange, bool) {
 			PreRow:   t.Rows.GetRow(t.PreviousTotalOffset + t.offset),
 			RowType:  rowType,
 			Checksum: checksum,
+			RowKey:   rowKey,
 		}
 		t.offset++
 		return row, true
@@ -494,6 +508,7 @@ func (t *DMLEvent) GetNextRow() (RowChange, bool) {
 			Row:      t.Rows.GetRow(t.PreviousTotalOffset + t.offset + 1),
 			RowType:  rowType,
 			Checksum: checksum,
+			RowKey:   rowKey,
 		}
 		t.offset += 2
 		return row, true
@@ -520,15 +535,10 @@ func (t *DMLEvent) Unmarshal(data []byte) error {
 	return t.decode(data)
 }
 
-// GetSize returns the size of the event in bytes, including all fields.
+// GetSize returns the approximate size of the rows in the transaction.
 func (t *DMLEvent) GetSize() int64 {
 	// Notice: events send from local channel will not have the size field.
 	// return t.eventSize
-	return t.GetRowsSize()
-}
-
-// GetRowsSize returns the approximate size of the rows in the transaction.
-func (t *DMLEvent) GetRowsSize() int64 {
 	return t.ApproximateSize
 }
 
@@ -551,6 +561,10 @@ func (t *DMLEvent) encodeV0() ([]byte, error) {
 	}
 	// Calculate the total size needed for the encoded data
 	size := 1 + t.DispatcherID.GetSize() + 5*8 + 4*3 + t.State.GetSize() + len(t.RowTypes)
+	size += 4 // len(t.RowKeys)
+	for i := 0; i < len(t.RowKeys); i++ {
+		size += 4 + len(t.RowKeys[i]) // size + contents of t.RowKeys[i]
+	}
 
 	// Allocate a buffer with the calculated size
 	buf := make([]byte, size)
@@ -596,6 +610,15 @@ func (t *DMLEvent) encodeV0() ([]byte, error) {
 	for _, rowType := range t.RowTypes {
 		buf[offset] = byte(rowType)
 		offset++
+	}
+	// RowKeys
+	binary.LittleEndian.PutUint32(buf[offset:], uint32(len(t.RowKeys)))
+	offset += 4
+	for _, rowKey := range t.RowKeys {
+		binary.LittleEndian.PutUint32(buf[offset:], uint32(len(rowKey)))
+		offset += 4
+		copy(buf[offset:], rowKey)
+		offset += len(rowKey)
 	}
 	return buf, nil
 }
@@ -646,6 +669,16 @@ func (t *DMLEvent) decodeV0(data []byte) error {
 		t.RowTypes[i] = common.RowType(data[offset])
 		offset++
 	}
+	rowKeysLen := int32(binary.LittleEndian.Uint32(data[offset:]))
+	offset += 4
+	t.RowKeys = make([][]byte, rowKeysLen)
+	for i := 0; i < int(rowKeysLen); i++ {
+		len := int32(binary.LittleEndian.Uint32(data[offset:]))
+		offset += 4
+		t.RowKeys[i] = make([]byte, len)
+		copy(t.RowKeys[i], data[offset:offset+int(len)])
+		offset += int(len)
+	}
 	return nil
 }
 
@@ -654,4 +687,5 @@ type RowChange struct {
 	Row      chunk.Row
 	RowType  common.RowType
 	Checksum *integrity.Checksum
+	RowKey   []byte
 }

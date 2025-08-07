@@ -363,7 +363,6 @@ func (t *DMLEvent) AppendRow(raw *common.RawKVEntry,
 			t.Checksum = append(t.Checksum, checksum)
 		}
 	} else {
-		// Only in test, the count will be 0.
 		log.Panic("DMLEvent.AppendRow: no rows decoded from the raw KV entry", zap.Any("raw", raw))
 	}
 	return nil

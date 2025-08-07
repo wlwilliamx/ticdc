@@ -1509,7 +1509,8 @@ func buildDDLEventCommon(rawEvent *PersistedDDLEvent, tableFilter filter.Filter,
 	// Note: not all ddl types will respect the `filtered` result: create tables, rename tables, rename table, exchange table partition.
 	filtered := false
 	if tableFilter != nil && rawEvent.SchemaName != "" && rawEvent.TableName != "" {
-		filtered, err := tableFilter.ShouldIgnoreDDL(
+		var err error
+		filtered, err = tableFilter.ShouldIgnoreDDL(
 			rawEvent.SchemaName, rawEvent.TableName, rawEvent.Query, model.ActionType(rawEvent.Type), rawEvent.TableInfo)
 		if err != nil {
 			return commonEvent.DDLEvent{}, false, err
@@ -1520,7 +1521,7 @@ func buildDDLEventCommon(rawEvent *PersistedDDLEvent, tableFilter filter.Filter,
 			if err != nil {
 				return commonEvent.DDLEvent{}, false, err
 			}
-			filtered = filtered || filtered1
+			filtered = filtered && filtered1
 		}
 	}
 

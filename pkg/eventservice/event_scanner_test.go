@@ -277,6 +277,84 @@ func TestEventScanner(t *testing.T) {
 	require.Equal(t, resolvedTs, e.GetCommitTs())
 }
 
+// Test the case where some DMLs have commit timestamps newer than the table's delete version
+func TestEventScannerWithDeleteTable(t *testing.T) {
+	broker, _, _ := newEventBrokerForTest()
+	broker.close()
+
+	mockEventStore := broker.eventStore.(*mockEventStore)
+	mockSchemaStore := broker.schemaStore.(*mockSchemaStore)
+
+	disInfo := newMockDispatcherInfoForTest(t)
+	changefeedStatus := broker.getOrSetChangefeedStatus(disInfo.GetChangefeedID())
+	tableID := disInfo.GetTableSpan().TableID
+	dispatcherID := disInfo.GetID()
+
+	startTs := uint64(100)
+	disp := newDispatcherStat(startTs, disInfo, nil, 0, 0, changefeedStatus)
+	makeDispatcherReady(disp)
+	broker.addDispatcher(disp.info)
+
+	scanner := newEventScanner(
+		broker.eventStore, broker.schemaStore, &mockMounter{}, 0,
+	)
+
+	// Construct events: dml2 and dml3 share commitTs, fakeDDL shares commitTs with them
+	helper := commonEvent.NewEventTestHelper(t)
+	defer helper.Close()
+	ddlEvent, kvEvents := genEvents(helper, `create table test.t(id int primary key, c char(50))`, []string{
+		`insert into test.t(id,c) values (0, "c0")`,
+		`insert into test.t(id,c) values (1, "c1")`,
+		`insert into test.t(id,c) values (2, "c2")`,
+		`insert into test.t(id,c) values (3, "c3")`,
+	}...)
+	resolvedTs := kvEvents[len(kvEvents)-1].CRTs + 1
+	err := mockEventStore.AppendEvents(dispatcherID, resolvedTs, kvEvents...)
+	require.NoError(t, err)
+	mockSchemaStore.AppendDDLEvent(tableID, ddlEvent)
+
+	// delete table after dml2
+	dml0 := kvEvents[0]
+	dml1 := kvEvents[1]
+	dml2 := kvEvents[2]
+	mockSchemaStore.DeleteTable(tableID, dml2.CRTs)
+	disp.eventStoreResolvedTs.Store(resolvedTs)
+	ok, dataRange := broker.getScanTaskDataRange(disp)
+	require.True(t, ok)
+
+	sl := scanLimit{
+		maxScannedBytes: 10000,
+		timeout:         1000 * time.Second,
+	}
+	_, events, isBroken, err := scanner.scan(context.Background(), disp, dataRange, sl)
+	require.NoError(t, err)
+	require.False(t, isBroken)
+	require.Equal(t, 4, len(events))
+	// DDL
+	e := events[0]
+	require.Equal(t, e.GetType(), pevent.TypeDDLEvent)
+	require.Equal(t, ddlEvent.FinishedTs, e.GetCommitTs())
+	// DML0
+	e = events[1]
+	require.Equal(t, e.GetType(), pevent.TypeBatchDMLEvent)
+	batchDML0 := e.(*pevent.BatchDMLEvent)
+	require.Equal(t, int32(1), batchDML0.Len())
+	require.Equal(t, batchDML0.DMLEvents[0].GetCommitTs(), dml0.CRTs)
+
+	// DML1 & DML2
+	e = events[2]
+	require.Equal(t, e.GetType(), pevent.TypeBatchDMLEvent)
+	batchDML1 := e.(*pevent.BatchDMLEvent)
+	require.Equal(t, int32(2), batchDML1.Len())
+	require.Equal(t, batchDML1.DMLEvents[0].GetCommitTs(), dml1.CRTs)
+	require.Equal(t, batchDML1.DMLEvents[1].GetCommitTs(), dml2.CRTs)
+
+	// resolvedTs
+	e = events[3]
+	require.Equal(t, e.GetType(), pevent.TypeResolvedEvent)
+	require.Equal(t, dml2.CRTs, e.GetCommitTs())
+}
+
 // TestEventScannerWithDDL tests cases where scanning is interrupted at DDL events
 // The scanner should return the DDL event plus any DML events sharing the same commitTs
 // It should also return a resolvedTs event with the commitTs of the last DML event

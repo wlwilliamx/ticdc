@@ -342,8 +342,8 @@ func (t *DMLEvent) AppendRow(raw *common.RawKVEntry,
 	// begin; insert into t (id) values (1); delete from t where id=1; commit;
 	// Just ignore these row changed events
 	// See https://github.com/pingcap/tiflow/issues/2612 for more details.
-	if (raw.Value == nil && raw.OldValue == nil) || (raw.ValueLen == 0 && raw.OldValueLen == 0) {
-		log.Debug("the value and old_value of the raw kv entry are both nil, skip it", zap.String("raw", raw.String()))
+	if (raw.Value == nil && raw.OldValue == nil) || (len(raw.Value) == 0 && len(raw.OldValue) == 0) {
+		log.Info("the value and old_value of the raw kv entry are both nil, skip it", zap.String("raw", raw.String()))
 		return nil
 	}
 	rowType := RowTypeInsert

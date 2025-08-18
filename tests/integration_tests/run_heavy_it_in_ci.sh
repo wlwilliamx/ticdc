@@ -147,7 +147,7 @@ storage_groups=(
 	# G00
 	'generate_column many_pk_or_uk multi_source'
 	# G01
-	#csv_storage_update_pk_clustered csv_storage_update_pk_nonclustered
+	csv_storage_update_pk_clustered csv_storage_update_pk_nonclustered
 	''
 	# G02
 	'canal_json_storage_basic canal_json_storage_partition_table'
@@ -156,7 +156,6 @@ storage_groups=(
 	# G04
 	'ddl_for_split_tables_with_random_move_table'
 	# G05
-	#
 	'move_table drop_many_tables'
 	# G06
 	'cdc default_value'

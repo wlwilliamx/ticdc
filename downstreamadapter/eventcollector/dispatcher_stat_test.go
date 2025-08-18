@@ -57,6 +57,10 @@ func (m *mockDispatcher) GetStartTs() uint64 {
 	return m.startTs
 }
 
+func (m *mockDispatcher) GetType() int {
+	return dispatcher.TypeDispatcherEvent
+}
+
 func (m *mockDispatcher) GetId() common.DispatcherID {
 	return m.id
 }
@@ -114,6 +118,10 @@ func (m *mockDispatcher) GetTimezone() string {
 
 func (m *mockDispatcher) GetIntegrityConfig() *eventpb.IntegrityConfig {
 	return &eventpb.IntegrityConfig{}
+}
+
+func (m *mockDispatcher) IsOutputRawChangeEvent() bool {
+	return false
 }
 
 // mockEvent implements the Event interface for testing

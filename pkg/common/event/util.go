@@ -222,7 +222,7 @@ func (s *EventTestHelper) DML2BatchEvent(schema, table string, dmls ...string) *
 	require.True(s.t, ok)
 	batchDMLEvent := NewBatchDMLEvent()
 	did := common.NewDispatcherID()
-	ts := tableInfo.UpdateTS()
+	ts := tableInfo.GetUpdateTS()
 	physicalTableID := tableInfo.TableName.TableID
 	for _, dml := range dmls {
 		dmlEvent := NewDMLEvent(did, physicalTableID, ts-1, ts+1, tableInfo)
@@ -242,7 +242,7 @@ func (s *EventTestHelper) DML2Event4PartitionTable(schema, table, partition, dml
 	require.True(s.t, ok)
 
 	did := common.NewDispatcherID()
-	ts := tableInfo.UpdateTS()
+	ts := tableInfo.GetUpdateTS()
 	physicalTableID := s.partitionIDs[key][partition]
 	dmlEvent := NewDMLEvent(did, physicalTableID, ts-1, ts+1, tableInfo)
 	dmlEvent.SetRows(chunk.NewChunkWithCapacity(tableInfo.GetFieldSlice(), 1))
@@ -266,7 +266,7 @@ func (s *EventTestHelper) DML2Event(schema, table string, dmls ...string) *DMLEv
 	tableInfo, ok := s.tableInfos[key]
 	require.True(s.t, ok)
 	did := common.NewDispatcherID()
-	ts := tableInfo.UpdateTS()
+	ts := tableInfo.GetUpdateTS()
 	physicalTableID := tableInfo.TableName.TableID
 	dmlEvent := NewDMLEvent(did, physicalTableID, ts-1, ts+1, tableInfo)
 	dmlEvent.SetRows(chunk.NewChunkWithCapacity(tableInfo.GetFieldSlice(), 1))
@@ -295,7 +295,7 @@ func (s *EventTestHelper) DML2UpdateEvent(schema, table string, dml ...string) (
 	tableInfo, ok := s.tableInfos[key]
 	require.True(s.t, ok)
 	did := common.NewDispatcherID()
-	ts := tableInfo.UpdateTS()
+	ts := tableInfo.GetUpdateTS()
 	physicalTableID := tableInfo.TableName.TableID
 	dmlEvent := NewDMLEvent(did, physicalTableID, ts-1, ts+1, tableInfo)
 	dmlEvent.SetRows(chunk.NewChunkWithCapacity(tableInfo.GetFieldSlice(), 1))
@@ -303,12 +303,15 @@ func (s *EventTestHelper) DML2UpdateEvent(schema, table string, dml ...string) (
 	rawKvs := s.DML2RawKv(physicalTableID, ts, dml...)
 
 	raw := &common.RawKVEntry{
-		OpType:   common.OpTypePut,
-		Key:      rawKvs[1].Key,
-		Value:    rawKvs[1].Value,
-		OldValue: rawKvs[0].Value,
-		StartTs:  rawKvs[0].StartTs,
-		CRTs:     rawKvs[1].CRTs,
+		OpType:      common.OpTypePut,
+		KeyLen:      uint32(len(rawKvs[1].Key)),
+		ValueLen:    uint32(len(rawKvs[1].Value)),
+		OldValueLen: uint32(len(rawKvs[0].Value)),
+		Key:         rawKvs[1].Key,
+		Value:       rawKvs[1].Value,
+		OldValue:    rawKvs[0].Value,
+		StartTs:     rawKvs[0].StartTs,
+		CRTs:        rawKvs[1].CRTs,
 	}
 
 	dmlEvent.AppendRow(raw, s.mounter.DecodeToChunk)
@@ -331,7 +334,7 @@ func (s *EventTestHelper) DML2DeleteEvent(schema, table string, dml string, dele
 	tableInfo, ok := s.tableInfos[key]
 	require.True(s.t, ok)
 	did := common.NewDispatcherID()
-	ts := tableInfo.UpdateTS()
+	ts := tableInfo.GetUpdateTS()
 	physicalTableID := tableInfo.TableName.TableID
 	dmlEvent := NewDMLEvent(did, physicalTableID, ts-1, ts+1, tableInfo)
 	dmlEvent.SetRows(chunk.NewChunkWithCapacity(tableInfo.GetFieldSlice(), 1))
@@ -363,7 +366,7 @@ func (s *EventTestHelper) ExecuteDeleteDml(schema, table string, dml string) {
 	key := toTableInfosKey(schema, table)
 	tableInfo, ok := s.tableInfos[key]
 	require.True(s.t, ok)
-	ts := tableInfo.UpdateTS()
+	ts := tableInfo.GetUpdateTS()
 	physicalTableID := tableInfo.TableName.TableID
 
 	_ = s.DML2RawKv(physicalTableID, ts, dml)

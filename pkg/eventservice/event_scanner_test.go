@@ -855,7 +855,7 @@ func TestDMLProcessorAppendRow(t *testing.T) {
 		insertSQL, updateSQL := "insert into test.t(id,a,b) values (7, 'a7', 'b7')", "update test.t set a = 'a7_updated' where id = 7"
 		_, updateEvent := helper.DML2UpdateEvent("test", "t", insertSQL, updateSQL)
 
-		err := processor.processNewTransaction(updateEvent, tableID, tableInfo, dispatcherID)
+		err := processor.processNewTransaction(updateEvent, tableID, tableInfo, dispatcherID, nil)
 		require.NoError(t, err)
 
 		// Verify insert cache
@@ -863,7 +863,7 @@ func TestDMLProcessorAppendRow(t *testing.T) {
 		require.Len(t, processor.batchDML.DMLEvents, 1)
 		nextRow, ok := processor.batchDML.DMLEvents[0].GetNextRow()
 		require.True(t, ok)
-		require.Equal(t, event.RowTypeUpdate, nextRow.RowType)
+		require.Equal(t, common.RowTypeUpdate, nextRow.RowType)
 	})
 }
 

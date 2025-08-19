@@ -257,12 +257,12 @@ func (r *dmlExprFilterRule) shouldSkipDML(
 	if ver, ok := r.tables[ti.TableName.TableID]; ok {
 		// If one table's tableInfo was updated, we need to reset this rule
 		// and update the tableInfo in the cache.
-		if ti.UpdateTS() != ver {
-			r.tables[ti.TableName.TableID] = ti.UpdateTS()
+		if ti.GetUpdateTS() != ver {
+			r.tables[ti.TableName.TableID] = ti.GetUpdateTS()
 			r.resetExpr(ti.TableName.String())
 		}
 	} else {
-		r.tables[ti.TableName.TableID] = ti.UpdateTS()
+		r.tables[ti.TableName.TableID] = ti.GetUpdateTS()
 	}
 
 	switch dmlType {

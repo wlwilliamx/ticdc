@@ -107,34 +107,34 @@ func newExprFilterRule(
 // 			FastGenByArgs(r.config.IgnoreDeleteValueExpr)
 // 	}
 // verify expression filter rule.
-// for _, ti := range tableInfos {
-// 	tableName := ti.TableName.String()
-// 	if !r.tableMatcher.MatchTable(ti.TableName.Schema, ti.TableName.Table) {
+// for _, tableInfo := range tableInfos {
+// 	tableName := tableInfo.TableName.String()
+// 	if !r.tableMatcher.MatchTable(tableInfo.TableName.Schema, tableInfo.TableName.Table) {
 // 		continue
 // 	}
 // 	if r.config.IgnoreInsertValueExpr != "" {
-// 		e, err := r.getSimpleExprOfTable(r.config.IgnoreInsertValueExpr, ti)
+// 		e, err := r.getSimpleExprOfTable(r.config.IgnoreInsertValueExpr, tableInfo)
 // 		if err != nil {
 // 			return err
 // 		}
 // 		r.insertExprs[tableName] = e
 // 	}
 // 	if r.config.IgnoreUpdateOldValueExpr != "" {
-// 		e, err := r.getSimpleExprOfTable(r.config.IgnoreUpdateOldValueExpr, ti)
+// 		e, err := r.getSimpleExprOfTable(r.config.IgnoreUpdateOldValueExpr, tableInfo)
 // 		if err != nil {
 // 			return err
 // 		}
 // 		r.updateOldExprs[tableName] = e
 // 	}
 // 	if r.config.IgnoreUpdateNewValueExpr != "" {
-// 		e, err := r.getSimpleExprOfTable(r.config.IgnoreUpdateNewValueExpr, ti)
+// 		e, err := r.getSimpleExprOfTable(r.config.IgnoreUpdateNewValueExpr, tableInfo)
 // 		if err != nil {
 // 			return err
 // 		}
 // 		r.updateNewExprs[tableName] = e
 // 	}
 // 	if r.config.IgnoreDeleteValueExpr != "" {
-// 		e, err := r.getSimpleExprOfTable(r.config.IgnoreDeleteValueExpr, ti)
+// 		e, err := r.getSimpleExprOfTable(r.config.IgnoreDeleteValueExpr, tableInfo)
 // 		if err != nil {
 // 			return err
 // 		}
@@ -154,15 +154,15 @@ func (r *dmlExprFilterRule) resetExpr(tableName string) {
 
 // getInsertExprs returns the expression filter to filter INSERT events.
 // This function will lazy calculate expressions if not initialized.
-func (r *dmlExprFilterRule) getInsertExpr(ti *common.TableInfo) (
+func (r *dmlExprFilterRule) getInsertExpr(tableInfo *common.TableInfo) (
 	expression.Expression, error,
 ) {
-	tableName := ti.TableName.String()
+	tableName := tableInfo.TableName.String()
 	if r.insertExprs[tableName] != nil {
 		return r.insertExprs[tableName], nil
 	}
 	if r.config.IgnoreInsertValueExpr != "" {
-		expr, err := r.getSimpleExprOfTable(r.config.IgnoreInsertValueExpr, ti.ToTiDBTableInfo())
+		expr, err := r.getSimpleExprOfTable(r.config.IgnoreInsertValueExpr, tableInfo.ToTiDBTableInfo())
 		if err != nil {
 			return nil, err
 		}
@@ -171,16 +171,16 @@ func (r *dmlExprFilterRule) getInsertExpr(ti *common.TableInfo) (
 	return r.insertExprs[tableName], nil
 }
 
-func (r *dmlExprFilterRule) getUpdateOldExpr(ti *common.TableInfo) (
+func (r *dmlExprFilterRule) getUpdateOldExpr(tableInfo *common.TableInfo) (
 	expression.Expression, error,
 ) {
-	tableName := ti.TableName.String()
+	tableName := tableInfo.TableName.String()
 	if r.updateOldExprs[tableName] != nil {
 		return r.updateOldExprs[tableName], nil
 	}
 
 	if r.config.IgnoreUpdateOldValueExpr != "" {
-		expr, err := r.getSimpleExprOfTable(r.config.IgnoreUpdateOldValueExpr, ti.ToTiDBTableInfo())
+		expr, err := r.getSimpleExprOfTable(r.config.IgnoreUpdateOldValueExpr, tableInfo.ToTiDBTableInfo())
 		if err != nil {
 			return nil, err
 		}
@@ -189,16 +189,16 @@ func (r *dmlExprFilterRule) getUpdateOldExpr(ti *common.TableInfo) (
 	return r.updateOldExprs[tableName], nil
 }
 
-func (r *dmlExprFilterRule) getUpdateNewExpr(ti *common.TableInfo) (
+func (r *dmlExprFilterRule) getUpdateNewExpr(tableInfo *common.TableInfo) (
 	expression.Expression, error,
 ) {
-	tableName := ti.TableName.String()
+	tableName := tableInfo.TableName.String()
 	if r.updateNewExprs[tableName] != nil {
 		return r.updateNewExprs[tableName], nil
 	}
 
 	if r.config.IgnoreUpdateNewValueExpr != "" {
-		expr, err := r.getSimpleExprOfTable(r.config.IgnoreUpdateNewValueExpr, ti.ToTiDBTableInfo())
+		expr, err := r.getSimpleExprOfTable(r.config.IgnoreUpdateNewValueExpr, tableInfo.ToTiDBTableInfo())
 		if err != nil {
 			return nil, err
 		}
@@ -207,16 +207,16 @@ func (r *dmlExprFilterRule) getUpdateNewExpr(ti *common.TableInfo) (
 	return r.updateNewExprs[tableName], nil
 }
 
-func (r *dmlExprFilterRule) getDeleteExpr(ti *common.TableInfo) (
+func (r *dmlExprFilterRule) getDeleteExpr(tableInfo *common.TableInfo) (
 	expression.Expression, error,
 ) {
-	tableName := ti.TableName.String()
+	tableName := tableInfo.TableName.String()
 	if r.deleteExprs[tableName] != nil {
 		return r.deleteExprs[tableName], nil
 	}
 
 	if r.config.IgnoreDeleteValueExpr != "" {
-		expr, err := r.getSimpleExprOfTable(r.config.IgnoreDeleteValueExpr, ti.ToTiDBTableInfo())
+		expr, err := r.getSimpleExprOfTable(r.config.IgnoreDeleteValueExpr, tableInfo.ToTiDBTableInfo())
 		if err != nil {
 			return nil, err
 		}
@@ -227,9 +227,9 @@ func (r *dmlExprFilterRule) getDeleteExpr(ti *common.TableInfo) (
 
 func (r *dmlExprFilterRule) getSimpleExprOfTable(
 	expr string,
-	ti *model.TableInfo,
+	tableInfo *model.TableInfo,
 ) (expression.Expression, error) {
-	e, err := expression.ParseSimpleExprWithTableInfo(r.sessCtx.GetExprCtx(), expr, ti)
+	e, err := expression.ParseSimpleExprWithTableInfo(r.sessCtx.GetExprCtx(), expr, tableInfo)
 	if err != nil {
 		// If an expression contains an unknown column,
 		// we return an error and stop the changefeed.
@@ -238,7 +238,7 @@ func (r *dmlExprFilterRule) getSimpleExprOfTable(
 				zap.String("expression", expr),
 				zap.Error(err))
 			return nil, cerror.ErrExpressionColumnNotFound.
-				FastGenByArgs(getColumnFromError(err), ti.Name.String(), expr)
+				FastGenByArgs(getColumnFromError(err), tableInfo.Name.String(), expr)
 		}
 		log.Error("failed to parse expression", zap.Error(err))
 		return nil, cerror.ErrExpressionParseFailed.FastGenByArgs(err, expr)
@@ -249,25 +249,25 @@ func (r *dmlExprFilterRule) getSimpleExprOfTable(
 func (r *dmlExprFilterRule) shouldSkipDML(
 	dmlType common.RowType,
 	preRow, row chunk.Row,
-	ti *common.TableInfo,
+	tableInfo *common.TableInfo,
 ) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if ver, ok := r.tables[ti.TableName.TableID]; ok {
+	if ver, ok := r.tables[tableInfo.TableName.TableID]; ok {
 		// If one table's tableInfo was updated, we need to reset this rule
 		// and update the tableInfo in the cache.
-		if ti.GetUpdateTS() != ver {
-			r.tables[ti.TableName.TableID] = ti.GetUpdateTS()
-			r.resetExpr(ti.TableName.String())
+		if tableInfo.GetUpdateTS() != ver {
+			r.tables[tableInfo.TableName.TableID] = tableInfo.GetUpdateTS()
+			r.resetExpr(tableInfo.TableName.String())
 		}
 	} else {
-		r.tables[ti.TableName.TableID] = ti.GetUpdateTS()
+		r.tables[tableInfo.TableName.TableID] = tableInfo.GetUpdateTS()
 	}
 
 	switch dmlType {
 	case common.RowTypeInsert:
-		exprs, err := r.getInsertExpr(ti)
+		exprs, err := r.getInsertExpr(tableInfo)
 		if err != nil {
 			return false, err
 		}
@@ -276,11 +276,11 @@ func (r *dmlExprFilterRule) shouldSkipDML(
 			exprs,
 		)
 	case common.RowTypeUpdate:
-		oldExprs, err := r.getUpdateOldExpr(ti)
+		oldExprs, err := r.getUpdateOldExpr(tableInfo)
 		if err != nil {
 			return false, err
 		}
-		newExprs, err := r.getUpdateNewExpr(ti)
+		newExprs, err := r.getUpdateNewExpr(tableInfo)
 		if err != nil {
 			return false, err
 		}
@@ -300,7 +300,7 @@ func (r *dmlExprFilterRule) shouldSkipDML(
 		}
 		return ignoreOld || ignoreNew, nil
 	case common.RowTypeDelete:
-		exprs, err := r.getDeleteExpr(ti)
+		exprs, err := r.getDeleteExpr(tableInfo)
 		if err != nil {
 			return false, err
 		}
@@ -403,19 +403,19 @@ func (f *dmlExprFilter) getRules(schema, table string) []*dmlExprFilterRule {
 func (f *dmlExprFilter) shouldSkipDML(
 	dmlType common.RowType,
 	preRow, row chunk.Row,
-	ti *common.TableInfo,
+	tableInfo *common.TableInfo,
 ) (bool, error) {
 	if len(f.rules) == 0 {
 		return false, nil
 	}
-	// for defense purpose, normally the ti should not be nil.
-	if ti == nil {
+	// for defense purpose, normally the tableInfo should not be nil.
+	if tableInfo == nil {
 		return false, nil
 	}
 
-	rules := f.getRules(ti.GetSchemaName(), ti.GetTableName())
+	rules := f.getRules(tableInfo.GetSchemaName(), tableInfo.GetTableName())
 	for _, rule := range rules {
-		ignore, err := rule.shouldSkipDML(dmlType, preRow, row, ti)
+		ignore, err := rule.shouldSkipDML(dmlType, preRow, row, tableInfo)
 		if err != nil {
 			if cerror.ShouldFailChangefeed(err) {
 				return false, err

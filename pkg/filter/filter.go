@@ -45,7 +45,7 @@ const (
 // Filter are safe for concurrent use.
 type Filter interface {
 	// ShouldIgnoreDML returns true if the DML event should not be handled.
-	ShouldIgnoreDML(dmlType common.RowType, preRow, row chunk.Row, ti *common.TableInfo) (bool, error)
+	ShouldIgnoreDML(dmlType common.RowType, preRow, row chunk.Row, tableInfo *common.TableInfo) (bool, error)
 	// ShouldIgnoreDDL returns true if the DDL event should not be sent to downstream.
 	ShouldIgnoreDDL(schema, table, query string, ddlType timodel.ActionType, tableInfo *timodel.TableInfo) (bool, error)
 	// ShouldIgnoreTable returns true if the table should be ignored.
@@ -162,19 +162,19 @@ func (f *filter) IsEligible(tableInfo *timodel.TableInfo) bool {
 // 0. By startTs.
 // 1. By table name.
 // 2. By type.
-func (f *filter) ShouldIgnoreDML(dmlType common.RowType, preRow, row chunk.Row, ti *common.TableInfo) (bool, error) {
-	if f.ShouldIgnoreTable(ti.GetSchemaName(), ti.GetTableName(), nil) {
+func (f *filter) ShouldIgnoreDML(dmlType common.RowType, preRow, row chunk.Row, tableInfo *common.TableInfo) (bool, error) {
+	if f.ShouldIgnoreTable(tableInfo.GetSchemaName(), tableInfo.GetTableName(), nil) {
 		return true, nil
 	}
 
-	ignoreByEventType, err := f.sqlEventFilter.shouldSkipDML(ti.GetSchemaName(), ti.GetTableName(), dmlType)
+	ignoreByEventType, err := f.sqlEventFilter.shouldSkipDML(tableInfo.GetSchemaName(), tableInfo.GetTableName(), dmlType)
 	if err != nil {
 		return false, err
 	}
 	if ignoreByEventType {
 		return true, nil
 	}
-	return f.dmlExprFilter.shouldSkipDML(dmlType, preRow, row, ti)
+	return f.dmlExprFilter.shouldSkipDML(dmlType, preRow, row, tableInfo)
 }
 
 // ShouldIgnoreDDL checks if a DDL event should be ignore by conditions below:

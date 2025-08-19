@@ -401,7 +401,6 @@ func (t *DMLEvent) AppendRow(raw *common.RawKVEntry,
 		if skip {
 			log.Debug("DMLEvent.AppendRow: skip row", zap.Any("tableInfo", t.TableInfo), zap.Any("raw", raw))
 			t.Rows.TruncateTo(t.Rows.NumRows() - count) // Remove the rows that were added
-			count = 0                                   // Reset count to 0, so that the row won't be added to the DMLEvent
 			return nil
 		}
 	}

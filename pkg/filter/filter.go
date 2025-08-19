@@ -162,6 +162,7 @@ func (f *filter) IsEligible(tableInfo *timodel.TableInfo) bool {
 // 0. By startTs.
 // 1. By table name.
 // 2. By type.
+// 3. By columns value.
 func (f *filter) ShouldIgnoreDML(dmlType common.RowType, preRow, row chunk.Row, ti *common.TableInfo) (bool, error) {
 	if f.ShouldIgnoreTable(ti.GetSchemaName(), ti.GetTableName(), nil) {
 		return true, nil

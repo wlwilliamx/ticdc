@@ -49,17 +49,17 @@ type BatchDMLEvent struct {
 	TableInfo *common.TableInfo `json:"table_info"`
 }
 
-func (b *BatchDMLEvent) String() string {
-	return fmt.Sprintf("BatchDMLEvent{Version: %d, DMLEvents: %v, Rows: %v, RawRows: %v, Table: %v, Len: %d}",
-		b.Version, b.DMLEvents, b.Rows, b.RawRows, b.TableInfo.TableName, b.Len())
-}
-
 // NewBatchDMLEvent creates a new BatchDMLEvent with proper initialization
 func NewBatchDMLEvent() *BatchDMLEvent {
 	return &BatchDMLEvent{
 		Version:   0,
 		DMLEvents: make([]*DMLEvent, 0),
 	}
+}
+
+func (b *BatchDMLEvent) String() string {
+	return fmt.Sprintf("BatchDMLEvent{Version: %d, DMLEvents: %v, Rows: %v, RawRows: %v, Table: %v, Len: %d}",
+		b.Version, b.DMLEvents, b.Rows, b.RawRows, b.TableInfo.TableName.String(), b.Len())
 }
 
 // PopHeadDMLEvents pops the first `count` DMLEvents from the BatchDMLEvent and returns a new BatchDMLEvent.
@@ -193,8 +193,8 @@ func (b *BatchDMLEvent) AssembleRows(tableInfo *common.TableInfo) {
 		return
 	}
 
-	if b.TableInfo != nil && b.TableInfo.UpdateTS() != tableInfo.UpdateTS() {
-		log.Panic("DMLEvent: TableInfoVersion mismatch", zap.Uint64("dmlEventTableInfoVersion", b.TableInfo.UpdateTS()), zap.Uint64("tableInfoVersion", tableInfo.UpdateTS()))
+	if b.TableInfo != nil && b.TableInfo.GetUpdateTS() != tableInfo.GetUpdateTS() {
+		log.Panic("DMLEvent: TableInfoVersion mismatch", zap.Uint64("dmlEventTableInfoVersion", b.TableInfo.GetUpdateTS()), zap.Uint64("tableInfoVersion", tableInfo.GetUpdateTS()))
 		return
 	}
 	decoder := chunk.NewCodec(tableInfo.GetFieldSlice())
@@ -305,11 +305,6 @@ type DMLEvent struct {
 	checksumOffset int                   `json:"-"`
 }
 
-func (t *DMLEvent) String() string {
-	return fmt.Sprintf("DMLEvent{Version: %d, DispatcherID: %s, Seq: %d, PhysicalTableID: %d, StartTs: %d, CommitTs: %d, Table: %v, Checksum: %v, Length: %d, Size: %d}",
-		t.Version, t.DispatcherID.String(), t.Seq, t.PhysicalTableID, t.StartTs, t.CommitTs, t.TableInfo.TableName, t.Checksum, t.Length, t.GetSize())
-}
-
 // NewDMLEvent creates a new DMLEvent with the given parameters
 func NewDMLEvent(
 	dispatcherID common.DispatcherID,
@@ -329,6 +324,11 @@ func NewDMLEvent(
 	}
 }
 
+func (t *DMLEvent) String() string {
+	return fmt.Sprintf("DMLEvent{Version: %d, DispatcherID: %s, Seq: %d, PhysicalTableID: %d, StartTs: %d, CommitTs: %d, Table: %v, Checksum: %v, Length: %d, Size: %d}",
+		t.Version, t.DispatcherID.String(), t.Seq, t.PhysicalTableID, t.StartTs, t.CommitTs, t.TableInfo.TableName.String(), t.Checksum, t.Length, t.GetSize())
+}
+
 // SetRows sets the Rows chunk for this DMLEvent
 func (t *DMLEvent) SetRows(rows *chunk.Chunk) {
 	t.Rows = rows
@@ -342,56 +342,71 @@ func (t *DMLEvent) AppendRow(raw *common.RawKVEntry,
 	) (int, *integrity.Checksum, error),
 	filter filter.Filter,
 ) error {
+	// Some transactions could generate empty row change event, such as
+	// begin; insert into t (id) values (1); delete from t where id=1; commit;
+	// Just ignore these row changed events
+	// See https://github.com/pingcap/tiflow/issues/2612 for more details.
+	if len(raw.Value) == 0 && len(raw.OldValue) == 0 {
+		log.Debug("the value and old_value of the raw kv entry are both nil, skip it", zap.String("raw", raw.String()))
+		return nil
+	}
+
 	rowType := common.RowTypeInsert
-	if raw.OpType == common.OpTypeDelete {
+	if raw.IsDelete() {
 		rowType = common.RowTypeDelete
 	}
 	if raw.IsUpdate() {
 		rowType = common.RowTypeUpdate
 	}
+
 	count, checksum, err := decode(raw, t.TableInfo, t.Rows)
 	if err != nil {
 		return err
 	}
+	if count <= 0 {
+		log.Panic("DMLEvent.AppendRow: no rows decoded from the raw KV entry", zap.String("raw", raw.String()))
+	}
+
+	var preRow, row chunk.Row
+	switch rowType {
+	case common.RowTypeInsert:
+		if count != 1 {
+			log.Panic("DMLEvent.AppendRow: insert row count should be 1",
+				zap.Int("count", count), zap.Any("raw", raw), zap.Any("tableInfo", t.TableInfo))
+		}
+		row = t.Rows.GetRow(t.Rows.NumRows() - 1)
+	case common.RowTypeDelete:
+		if count != 1 {
+			log.Panic("DMLEvent.AppendRow: delete row count should be 1",
+				zap.Int("count", count), zap.Any("raw", raw), zap.Any("tableInfo", t.TableInfo))
+		}
+		preRow = t.Rows.GetRow(t.Rows.NumRows() - 1)
+	case common.RowTypeUpdate:
+		if count != 2 {
+			log.Panic("DMLEvent.AppendRow: update row count should be 2",
+				zap.Int("count", count), zap.Any("raw", raw), zap.Any("tableInfo", t.TableInfo))
+		}
+		preRow = t.Rows.GetRow(t.Rows.NumRows() - 2)
+		row = t.Rows.GetRow(t.Rows.NumRows() - 1)
+	default:
+		log.Panic("DMLEvent.AppendRow: invalid row type", zap.Uint8("rowType", uint8(rowType)),
+			zap.Any("raw", raw), zap.Any("tableInfo", t.TableInfo))
+	}
+
+	if filter != nil {
+		skip, err := filter.ShouldIgnoreDML(rowType, preRow, row, t.TableInfo)
+		if err != nil {
+			return errors.Trace(err)
+		}
+		if skip {
+			log.Debug("DMLEvent.AppendRow: skip row", zap.Any("tableInfo", t.TableInfo), zap.Any("raw", raw))
+			t.Rows.TruncateTo(t.Rows.NumRows() - count) // Remove the rows that were added
+			count = 0                                   // Reset count to 0, so that the row won't be added to the DMLEvent
+			return nil
+		}
+	}
+
 	if count != 0 {
-		var preRow, row chunk.Row
-		switch rowType {
-		case common.RowTypeInsert:
-			if count != 1 {
-				log.Panic("DMLEvent.AppendRow: insert row count should be 1",
-					zap.Int("count", count), zap.Any("raw", raw), zap.Any("tableInfo", t.TableInfo))
-			}
-			row = t.Rows.GetRow(t.Rows.NumRows() - 1)
-		case common.RowTypeDelete:
-			if count != 1 {
-				log.Panic("DMLEvent.AppendRow: delete row count should be 1",
-					zap.Int("count", count), zap.Any("raw", raw), zap.Any("tableInfo", t.TableInfo))
-			}
-			preRow = t.Rows.GetRow(t.Rows.NumRows() - 1)
-		case common.RowTypeUpdate:
-			if count != 2 {
-				log.Panic("DMLEvent.AppendRow: update row count should be 2",
-					zap.Int("count", count), zap.Any("raw", raw), zap.Any("tableInfo", t.TableInfo))
-			}
-			preRow = t.Rows.GetRow(t.Rows.NumRows() - 2)
-			row = t.Rows.GetRow(t.Rows.NumRows() - 1)
-		default:
-			log.Panic("DMLEvent.AppendRow: invalid row type", zap.Uint8("rowType", uint8(rowType)),
-				zap.Any("raw", raw), zap.Any("tableInfo", t.TableInfo))
-		}
-
-		if filter != nil {
-			skip, err := filter.ShouldIgnoreDML(rowType, preRow, row, t.TableInfo)
-			if err != nil {
-				return errors.Trace(err)
-			}
-			if skip {
-				log.Debug("DMLEvent.AppendRow: skip row", zap.Any("tableInfo", t.TableInfo), zap.Any("raw", raw))
-				t.Rows.TruncateTo(t.Rows.NumRows() - count) // Remove the rows that were added
-				return nil
-			}
-		}
-
 		for range count {
 			t.RowTypes = append(t.RowTypes, rowType)
 			keyCopy := make([]byte, len(raw.Key))

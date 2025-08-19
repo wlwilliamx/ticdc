@@ -47,6 +47,11 @@ func GetDDLActionType(query string) timodel.ActionType {
 	case *ast.AlterTableStmt:
 		if len(s.Specs) > 1 {
 			return timodel.ActionMultiSchemaChange
+		} else if len(s.Specs) == 0 {
+			// The TTL_ENABLE attribute in the downstream will be automatically set to OFF
+			// `ALTER TABLE TTL_ENABLE='ON'` will transform into `ALTER TABLE`
+			// and the table specs are empty.
+			return timodel.ActionAlterTTLInfo
 		}
 		spec := s.Specs[0]
 		switch spec.Tp {
@@ -102,7 +107,7 @@ func GetDDLActionType(query string) timodel.ActionType {
 		case ast.AlterTableRenameIndex:
 			return timodel.ActionRenameIndex
 		case ast.AlterTableTruncatePartition:
-			return timodel.ActionTruncateTable
+			return timodel.ActionTruncateTablePartition
 		case ast.AlterTablePartition:
 			return timodel.ActionAlterTablePartitioning
 		case ast.AlterTableRemovePartitioning:
@@ -128,7 +133,7 @@ func GetDDLActionType(query string) timodel.ActionType {
 		return timodel.ActionDropIndex
 	case *ast.DropDatabaseStmt:
 		return timodel.ActionDropSchema
-	case *ast.RecoverTableStmt:
+	case *ast.FlashBackTableStmt, *ast.RecoverTableStmt:
 		return timodel.ActionRecoverTable
 	case *ast.RenameTableStmt:
 		if len(s.TableToTables) > 1 {
@@ -219,7 +224,7 @@ func GetBlockedTables(
 	case timodel.ActionAddTablePartition, timodel.ActionDropTablePartition,
 		timodel.ActionTruncateTablePartition, timodel.ActionReorganizePartition,
 		timodel.ActionAlterTablePartitioning, timodel.ActionRemovePartitioning,
-		timodel.ActionExchangeTablePartition:
+		timodel.ActionExchangeTablePartition, timodel.ActionAlterTTLInfo, timodel.ActionAlterTTLRemove:
 		return &commonEvent.InfluencedTables{
 			InfluenceType: commonEvent.InfluenceTypeNormal,
 			TableIDs:      blockedTableIDs,

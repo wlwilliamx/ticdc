@@ -1524,6 +1524,9 @@ func buildDDLEventCommon(rawEvent *PersistedDDLEvent, tableFilter filter.Filter,
 			filtered = filtered && filtered1
 		}
 	}
+	if filtered {
+		log.Info("ignore DDL by filter", zap.String("query", rawEvent.Query), zap.Any("rawEvent", rawEvent))
+	}
 
 	if rawEvent.TableInfo != nil {
 		wrapTableInfo = common.WrapTableInfo(rawEvent.SchemaName, rawEvent.TableInfo)

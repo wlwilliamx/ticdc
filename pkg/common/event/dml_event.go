@@ -399,7 +399,7 @@ func (t *DMLEvent) AppendRow(raw *common.RawKVEntry,
 			return errors.Trace(err)
 		}
 		if skip {
-			log.Debug("DMLEvent.AppendRow: skip row", zap.Any("tableInfo", t.TableInfo), zap.Any("raw", raw))
+			log.Info("ignore DML by filter", zap.Any("tableInfo", t.TableInfo), zap.Any("raw", raw))
 			t.Rows.TruncateTo(t.Rows.NumRows() - count) // Remove the rows that were added
 			return nil
 		}

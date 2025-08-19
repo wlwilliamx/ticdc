@@ -189,6 +189,7 @@ func (f *filter) ShouldIgnoreDDL(schema, table, query string, ddlType timodel.Ac
 		return true, nil
 	}
 
+	// If the DDL is a schema DDL, we should ignore it if the schema is not allowed.
 	if IsSchemaDDL(ddlType) && (IsSysSchema(schema) || !f.tableFilter.MatchSchema(schema)) {
 		return true, nil
 	}

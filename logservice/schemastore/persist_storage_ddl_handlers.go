@@ -1753,7 +1753,19 @@ func buildDDLEventForTruncateTable(rawEvent *PersistedDDLEvent, tableFilter filt
 		return commonEvent.DDLEvent{}, false, err
 	}
 	if !ok {
-		return ddlEvent, false, err
+		// If a `TRUNCATE TABLE` DDL is filtered by event filter,
+		// we don't need to sync it to downstream, but the DML events of the new truncated table
+		// should be sent to downstream.
+		// So we should send the `TRUNCATE TABLE` DDL event to table trigger,
+		// to ensure the new truncated table can be handled correctly.
+		needSyncDML := tableFilter != nil && !tableFilter.ShouldIgnoreTable(rawEvent.SchemaName, rawEvent.TableName, rawEvent.TableInfo)
+		// The core of whether `NotSync` is set to true is whether the DML events of the new truncated table
+		// should be sent to downstream. If the table is filtered, we don't need to
+		// send the DML events of the new truncated table to downstream. So we can just ignore the `TRUNCATE TABLE` DDL in here.
+		// Thus, we set `NotSync` to true.
+		// If the table is not filtered, we should send the DML events of the new truncated table to downstream.
+		// So we set `NotSync` to false.
+		ddlEvent.NotSync = needSyncDML
 	}
 	if isPartitionTable(rawEvent.TableInfo) {
 		prevPartitionsAndDDLSpanID := make([]int64, 0, len(rawEvent.PrevPartitions)+1)

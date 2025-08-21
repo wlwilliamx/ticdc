@@ -1507,7 +1507,7 @@ func extractTableInfoFuncForRemovePartitioning(event *PersistedDDLEvent, tableID
 func buildDDLEventCommon(rawEvent *PersistedDDLEvent, tableFilter filter.Filter, tiDBOnly bool) (commonEvent.DDLEvent, bool, error) {
 	var wrapTableInfo *common.TableInfo
 	// Note: not all ddl types will respect the `filtered` result: create tables, rename tables, rename table, exchange table partition.
-	filtered, NotSync := false, false
+	filtered, notSync := false, false
 	if tableFilter != nil && rawEvent.SchemaName != "" && rawEvent.TableName != "" {
 		filtered = tableFilter.ShouldIgnoreTable(rawEvent.SchemaName, rawEvent.TableName, rawEvent.TableInfo)
 		// if the ddl involve another table name, only set filtered to true when all of them should be filtered
@@ -1526,14 +1526,14 @@ func buildDDLEventCommon(rawEvent *PersistedDDLEvent, tableFilter filter.Filter,
 		// to ensure the new truncated table can be handled correctly.
 		if tableFilter != nil && rawEvent.SchemaName != "" && rawEvent.TableName != "" {
 			var err error
-			NotSync, err = tableFilter.ShouldIgnoreDDL(
+			notSync, err = tableFilter.ShouldIgnoreDDL(
 				rawEvent.SchemaName, rawEvent.TableName, rawEvent.Query, model.ActionType(rawEvent.Type), rawEvent.TableInfo)
 			if err != nil {
 				return commonEvent.DDLEvent{}, false, err
 			}
 			// if the ddl involve another table name, only set filtered to true when all of them should be filtered
 			if rawEvent.ExtraSchemaName != "" && rawEvent.ExtraTableName != "" {
-				NotSync1, err := tableFilter.ShouldIgnoreDDL(rawEvent.ExtraSchemaName, rawEvent.ExtraTableName, rawEvent.Query, model.ActionType(rawEvent.Type), rawEvent.TableInfo)
+				notSyncByExtraTable, err := tableFilter.ShouldIgnoreDDL(rawEvent.ExtraSchemaName, rawEvent.ExtraTableName, rawEvent.Query, model.ActionType(rawEvent.Type), rawEvent.TableInfo)
 				if err != nil {
 					return commonEvent.DDLEvent{}, false, err
 				}
@@ -1543,10 +1543,10 @@ func buildDDLEventCommon(rawEvent *PersistedDDLEvent, tableFilter filter.Filter,
 				// Thus, we set `NotSync` to true.
 				// If the table is not filtered, we should send the DML events to downstream.
 				// So we set `NotSync` to false, and this corresponding DDL can be applied to log service.
-				NotSync = NotSync && NotSync1
+				notSync = notSync && notSyncByExtraTable
 			}
 		}
-		if NotSync {
+		if notSync {
 			log.Info("ignore DDL by event filter(ShouldIgnoreDDL), it will be skipped in dispatcher",
 				zap.String("query", rawEvent.Query),
 				zap.Any("rawEvent", rawEvent))
@@ -1573,7 +1573,7 @@ func buildDDLEventCommon(rawEvent *PersistedDDLEvent, tableFilter filter.Filter,
 
 		TableNameInDDLJob: rawEvent.TableNameInDDLJob,
 		DBNameInDDLJob:    rawEvent.DBNameInDDLJob,
-		NotSync:           NotSync,
+		NotSync:           notSync,
 	}, !filtered, nil
 }
 

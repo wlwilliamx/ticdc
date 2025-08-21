@@ -25,3 +25,8 @@ VALUES (2, 'huahua');
 
 INSERT INTO t_rename3
 VALUES (3, 'xigua');
+
+RENAME TABLE t_rename4 TO t_rename5;
+
+INSERT INTO t_rename5
+VALUES (5, 'haha');

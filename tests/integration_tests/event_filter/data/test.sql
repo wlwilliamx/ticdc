@@ -111,3 +111,10 @@ CREATE TABLE t_name3 (
                     name varchar(128),
                     PRIMARY KEY (id)
 );
+CREATE TABLE t_rename4 (
+                    id INT,
+                    name varchar(128),
+                    PRIMARY KEY (id)
+);
+
+CREATE TABLE t_create (id INT PRIMARY KEY, val INT);

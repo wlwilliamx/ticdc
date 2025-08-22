@@ -46,9 +46,9 @@ const (
 // Filter are safe for concurrent use.
 type Filter interface {
 	// ShouldIgnoreDML returns true if the DML event should not be handled.
-	ShouldIgnoreDML(dmlType common.RowType, preRow, row chunk.Row, tableInfo *common.TableInfo) (bool, error)
+	ShouldIgnoreDML(dmlType common.RowType, preRow, row chunk.Row, tableInfo *common.TableInfo, startTs uint64) (bool, error)
 	// ShouldIgnoreDDL returns true if the DDL event should not be sent to downstream.
-	ShouldIgnoreDDL(schema, table, query string, ddlType timodel.ActionType, tableInfo *timodel.TableInfo) (bool, error)
+	ShouldIgnoreDDL(schema, table, query string, ddlType timodel.ActionType, tableInfo *timodel.TableInfo, startTs uint64) (bool, error)
 	// ShouldIgnoreTable returns true if the table should be ignored.
 	ShouldIgnoreTable(schema, table string, tableInfo *timodel.TableInfo) bool
 	// Verify should only be called by create changefeed OpenAPI.
@@ -163,7 +163,11 @@ func (f *filter) IsEligible(tableInfo *timodel.TableInfo) bool {
 // 0. By startTs.
 // 1. By table name.
 // 2. By type.
-func (f *filter) ShouldIgnoreDML(dmlType common.RowType, preRow, row chunk.Row, tableInfo *common.TableInfo) (bool, error) {
+func (f *filter) ShouldIgnoreDML(dmlType common.RowType, preRow, row chunk.Row, tableInfo *common.TableInfo, startTs uint64) (bool, error) {
+	if f.shouldIgnoreStartTs(startTs) {
+		return true, nil
+	}
+
 	if f.ShouldIgnoreTable(tableInfo.GetSchemaName(), tableInfo.GetTableName(), nil) {
 		return true, nil
 	}
@@ -185,7 +189,7 @@ func (f *filter) ShouldIgnoreDML(dmlType common.RowType, preRow, row chunk.Row, 
 // 3. By startTs.
 // 4. By ddl type.
 // 5. By ddl query.
-func (f *filter) ShouldIgnoreDDL(schema, table, query string, ddlType timodel.ActionType, tableInfo *timodel.TableInfo) (bool, error) {
+func (f *filter) ShouldIgnoreDDL(schema, table, query string, ddlType timodel.ActionType, tableInfo *timodel.TableInfo, startTs uint64) (bool, error) {
 	if !isAllowedDDL(ddlType) {
 		return true, nil
 	}
@@ -199,9 +203,9 @@ func (f *filter) ShouldIgnoreDDL(schema, table, query string, ddlType timodel.Ac
 		return true, nil
 	}
 
-	// if f.shouldIgnoreStartTs(ddl.StartTs) {
-	// 	return true, nil
-	// }
+	if f.shouldIgnoreStartTs(startTs) {
+		return true, nil
+	}
 	return f.sqlEventFilter.shouldSkipDDL(schema, table, query, ddlType)
 }
 

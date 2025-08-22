@@ -530,6 +530,7 @@ func buildPersistedDDLEventCommon(args buildPersistedDDLEventFuncArgs) Persisted
 		DBInfo:            job.BinlogInfo.DBInfo,
 		TableInfo:         job.BinlogInfo.TableInfo,
 		FinishedTs:        job.BinlogInfo.FinishedTS,
+		StartTs:           job.StartTS,
 		BDRRole:           job.BDRRole,
 		CDCWriteSource:    job.CDCWriteSource,
 	}
@@ -1527,13 +1528,20 @@ func buildDDLEventCommon(rawEvent *PersistedDDLEvent, tableFilter filter.Filter,
 		if tableFilter != nil && rawEvent.SchemaName != "" && rawEvent.TableName != "" {
 			var err error
 			notSync, err = tableFilter.ShouldIgnoreDDL(
-				rawEvent.SchemaName, rawEvent.TableName, rawEvent.Query, model.ActionType(rawEvent.Type), rawEvent.TableInfo)
+				rawEvent.SchemaName, rawEvent.TableName, rawEvent.Query, model.ActionType(rawEvent.Type), rawEvent.TableInfo, rawEvent.StartTs)
 			if err != nil {
 				return commonEvent.DDLEvent{}, false, err
 			}
 			// if the ddl involve another table name, only set filtered to true when all of them should be filtered
 			if rawEvent.ExtraSchemaName != "" && rawEvent.ExtraTableName != "" {
-				notSyncByExtraTable, err := tableFilter.ShouldIgnoreDDL(rawEvent.ExtraSchemaName, rawEvent.ExtraTableName, rawEvent.Query, model.ActionType(rawEvent.Type), rawEvent.TableInfo)
+				notSyncByExtraTable, err := tableFilter.ShouldIgnoreDDL(
+					rawEvent.ExtraSchemaName,
+					rawEvent.ExtraTableName,
+					rawEvent.Query,
+					model.ActionType(rawEvent.Type),
+					rawEvent.TableInfo,
+					rawEvent.StartTs,
+				)
 				if err != nil {
 					return commonEvent.DDLEvent{}, false, err
 				}

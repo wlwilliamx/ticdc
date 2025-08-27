@@ -347,12 +347,38 @@ func TestShouldIgnoreTable(t *testing.T) {
 	require.False(t, f.ShouldIgnoreTable("TEST", "t1", nil))
 }
 
-func TestShouldIgnoreDDL(t *testing.T) {
+func TestShouldDiscardDDL(t *testing.T) {
 	t.Parallel()
 
 	cfg := &config.FilterConfig{
 		Rules:            []string{"test.*"},
 		IgnoreTxnStartTs: []uint64{100},
+	}
+
+	f, err := NewFilter(cfg, "UTC", false, false)
+	require.NoError(t, err)
+
+	// DDL not in whitelist, should discard.
+	require.True(t, f.ShouldDiscardDDL("test", "t", model.ActionAlterCacheTable, nil, 0))
+
+	// DDL for a table that doesn't match the rule, should discard.
+	require.True(t, f.ShouldDiscardDDL("otherdb", "t1", model.ActionCreateTable, nil, 0))
+
+	// DDL (create table) matches IgnoreTxnStartTs, should discard.
+	require.True(t, f.ShouldDiscardDDL("test", "t1", model.ActionCreateTable, nil, 100))
+
+	// DDL (create table) does not match any discard rule, should not discard.
+	require.False(t, f.ShouldDiscardDDL("test", "t1", model.ActionCreateTable, nil, 0))
+
+	// DDL on system schema, should discard.
+	require.True(t, f.ShouldDiscardDDL("mysql", "t1", model.ActionCreateTable, nil, 0))
+}
+
+func TestShouldIgnoreDDL(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.FilterConfig{
+		Rules: []string{"test.*"},
 		EventFilters: []*config.EventFilterRule{
 			{
 				Matcher:     []string{"test.t1"},
@@ -368,38 +394,23 @@ func TestShouldIgnoreDDL(t *testing.T) {
 	f, err := NewFilter(cfg, "UTC", false, false)
 	require.NoError(t, err)
 
-	// DDL not in whitelist, should ignore
-	ignore, err := f.ShouldIgnoreDDL("test", "t", "ALTER TABLE t CACHE", model.ActionAlterCacheTable, nil, 0)
+	// DDL matches an event filter rule (drop table), should ignore.
+	ignore, err := f.ShouldIgnoreDDL("test", "t1", "DROP TABLE t1", model.ActionDropTable)
 	require.NoError(t, err)
 	require.True(t, ignore)
 
-	// DDL for a table that doesn't match the rule, should ignore
-	ignore, err = f.ShouldIgnoreDDL("otherdb", "t1", "CREATE TABLE t1(id int)", model.ActionCreateTable, nil, 0)
-	require.NoError(t, err)
-	require.True(t, ignore)
-
-	// DDL matches an event filter rule (drop table), should ignore
-	ignore, err = f.ShouldIgnoreDDL("test", "t1", "DROP TABLE t1", model.ActionDropTable, nil, 0)
-	require.NoError(t, err)
-	require.True(t, ignore)
-
-	// DDL (create table) does not match event filter, should not ignore
-	ignore, err = f.ShouldIgnoreDDL("test", "t1", "CREATE TABLE t1(id int)", model.ActionCreateTable, nil, 0)
+	// DDL (create table) does not match event filter, should not ignore.
+	ignore, err = f.ShouldIgnoreDDL("test", "t1", "CREATE TABLE t1(id int)", model.ActionCreateTable)
 	require.NoError(t, err)
 	require.False(t, ignore)
 
-	// DDL (create table) matches IgnoreTxnStartTs, should ignore
-	ignore, err = f.ShouldIgnoreDDL("test", "t1", "CREATE TABLE t1(id int)", model.ActionCreateTable, nil, 100)
+	// DDL matches an SQL regex rule, should ignore.
+	ignore, err = f.ShouldIgnoreDDL("test", "t2", "DROP TABLE t2", model.ActionDropTable)
 	require.NoError(t, err)
 	require.True(t, ignore)
 
-	// DDL matches an SQL regex rule, should ignore
-	ignore, err = f.ShouldIgnoreDDL("test", "t2", "DROP TABLE t2", model.ActionDropTable, nil, 0)
-	require.NoError(t, err)
-	require.True(t, ignore)
-
-	// DDL does not match any rule, should not ignore
-	ignore, err = f.ShouldIgnoreDDL("test", "t3", "CREATE TABLE t3(id int)", model.ActionCreateTable, nil, 0)
+	// DDL does not match any rule, should not ignore.
+	ignore, err = f.ShouldIgnoreDDL("test", "t3", "CREATE TABLE t3(id int)", model.ActionCreateTable)
 	require.NoError(t, err)
 	require.False(t, ignore)
 }

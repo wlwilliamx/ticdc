@@ -14,6 +14,7 @@
 package filter
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/pingcap/errors"
@@ -100,7 +101,7 @@ func TestSQLEventFilterDML(t *testing.T) {
 
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
-			filter, err := newSQLEventFilter(cs.cfg)
+			filter, err := newSQLEventFilter(cs.cfg, false)
 			require.NoError(t, err)
 			skip, err := filter.shouldSkipDML(cs.schema, cs.table, cs.dmlType)
 			require.NoError(t, err)
@@ -241,13 +242,97 @@ func TestSQLEventFilterDDL(t *testing.T) {
 
 	for _, cs := range cases {
 		t.Run(cs.name, func(t *testing.T) {
-			filter, err := newSQLEventFilter(cs.cfg)
+			filter, err := newSQLEventFilter(cs.cfg, false)
 			require.NoError(t, err)
 			skip, err := filter.shouldSkipDDL(cs.schema, cs.table, cs.query, cs.ddlType)
 			require.NoError(t, err)
 			require.Equal(t, cs.shouldBeSkipped, skip)
 		})
 	}
+}
+
+func TestSQLEventFilterCaseSensitivity(t *testing.T) {
+	t.Parallel()
+	cfg := &config.FilterConfig{
+		EventFilters: []*config.EventFilterRule{
+			{
+				Matcher:     []string{"TEST_DB.TEST_TABLE"},
+				IgnoreEvent: []bf.EventType{bf.InsertEvent, bf.CreateTable},
+			},
+		},
+	}
+
+	// Case 1: case-sensitive
+	filter, err := newSQLEventFilter(cfg, true)
+	require.NoError(t, err)
+
+	// DML tests for case-sensitive
+	// Exact match, should skip
+	skip, err := filter.shouldSkipDML("TEST_DB", "TEST_TABLE", common.RowTypeInsert)
+	require.NoError(t, err)
+	require.True(t, skip)
+
+	// Different case, should not skip
+	skip, err = filter.shouldSkipDML("test_db", "test_table", common.RowTypeInsert)
+	require.NoError(t, err)
+	require.False(t, skip)
+
+	// Different event type, should not skip
+	skip, err = filter.shouldSkipDML("TEST_DB", "TEST_TABLE", common.RowTypeUpdate)
+	require.NoError(t, err)
+	require.False(t, skip)
+
+	// DDL tests for case-sensitive
+	// Exact match, should skip
+	skip, err = filter.shouldSkipDDL("TEST_DB", "TEST_TABLE", "CREATE TABLE ...", model.ActionCreateTable)
+	require.NoError(t, err)
+	require.True(t, skip)
+
+	// Different case, should not skip
+	skip, err = filter.shouldSkipDDL("test_db", "test_table", "CREATE TABLE ...", model.ActionCreateTable)
+	require.NoError(t, err)
+	require.False(t, skip)
+
+	// Different DDL type, should not skip
+	skip, err = filter.shouldSkipDDL("TEST_DB", "TEST_TABLE", "DROP TABLE ...", model.ActionDropTable)
+	require.NoError(t, err)
+	require.False(t, skip)
+
+	// Case 2: case-insensitive
+	filter, err = newSQLEventFilter(cfg, false)
+	require.NoError(t, err)
+
+	// DML tests for case-insensitive
+	// Exact match, should skip
+	skip, err = filter.shouldSkipDML("TEST_DB", "TEST_TABLE", common.RowTypeInsert)
+	require.NoError(t, err)
+	require.True(t, skip)
+
+	// Different case, should also skip
+	skip, err = filter.shouldSkipDML("test_db", "test_table", common.RowTypeInsert)
+	require.NoError(t, err)
+	require.True(t, skip)
+
+	// Different event type, should not skip
+	skip, err = filter.shouldSkipDML("test_db", "test_table", common.RowTypeUpdate)
+	require.NoError(t, err)
+	require.False(t, skip)
+
+	// DDL tests for case-insensitive
+	// Exact match, should skip
+	skip, err = filter.shouldSkipDDL("TEST_DB", "TEST_TABLE", "CREATE TABLE ...", model.ActionCreateTable)
+	require.NoError(t, err)
+	require.True(t, skip)
+
+	// Different case, should also skip
+	skip, err = filter.shouldSkipDDL("test_db", "test_table", "CREATE TABLE ...", model.ActionCreateTable)
+	require.NoError(t, err)
+	require.True(t, skip)
+
+	// Different DDL type, should not skip
+	skip, err = filter.shouldSkipDDL("TEST_DB", "TEST_TABLE", "DROP TABLE ...", model.ActionDropTable)
+	require.NoError(t, err)
+	require.False(t, skip)
 }
 
 func TestSQLEventFilterInvalidConfig(t *testing.T) {
@@ -261,7 +346,7 @@ func TestSQLEventFilterInvalidConfig(t *testing.T) {
 			},
 		},
 	}
-	_, err := newSQLEventFilter(cfg)
+	_, err := newSQLEventFilter(cfg, false)
 	require.Error(t, err)
 	require.Regexp(t, "invalid ignore event type", err.Error())
 
@@ -273,7 +358,7 @@ func TestSQLEventFilterInvalidConfig(t *testing.T) {
 			},
 		},
 	}
-	_, err = newSQLEventFilter(cfg)
+	_, err = newSQLEventFilter(cfg, false)
 	require.Error(t, err)
 	require.Regexp(t, "ErrFilterRuleInvalid", err.Error())
 
@@ -286,7 +371,7 @@ func TestSQLEventFilterInvalidConfig(t *testing.T) {
 			},
 		},
 	}
-	_, err = newSQLEventFilter(cfg)
+	_, err = newSQLEventFilter(cfg, false)
 	require.Error(t, err)
 	require.Regexp(t, "ErrFilterRuleInvalid", err.Error())
 }
@@ -348,12 +433,17 @@ func TestShouldSkipDDL(t *testing.T) {
 			},
 		},
 	}
-	f, err := newSQLEventFilter(case1.cfg)
-	require.True(t, errors.ErrorEqual(err, case1.err), "case: %+s", err)
-	for _, c := range case1.cases {
-		skip, err := f.shouldSkipDDL(c.schema, c.table, c.query, c.ddlType)
-		require.NoError(t, err)
-		require.Equal(t, c.skip, skip, "case: %+v", c)
+
+	for _, caseSensitive := range []bool{true, false} {
+		t.Run(fmt.Sprintf("caseSensitive-%v", caseSensitive), func(t *testing.T) {
+			f, err := newSQLEventFilter(case1.cfg, caseSensitive)
+			require.True(t, errors.ErrorEqual(err, case1.err), "case: %+s", err)
+			for _, c := range case1.cases {
+				skip, err := f.shouldSkipDDL(c.schema, c.table, c.query, c.ddlType)
+				require.NoError(t, err)
+				require.Equal(t, c.skip, skip, "case: %+v", c)
+			}
+		})
 	}
 
 	// filter some ddl
@@ -397,12 +487,16 @@ func TestShouldSkipDDL(t *testing.T) {
 			},
 		},
 	}
-	f, err = newSQLEventFilter(case2.cfg)
-	require.True(t, errors.ErrorEqual(err, case2.err), "case: %+s", err)
-	for _, c := range case2.cases {
-		skip, err := f.shouldSkipDDL(c.schema, c.table, c.query, c.ddlType)
-		require.NoError(t, err)
-		require.Equal(t, c.skip, skip, "case: %+v", c)
+	for _, caseSensitive := range []bool{true, false} {
+		t.Run(fmt.Sprintf("caseSensitive-%v", caseSensitive), func(t *testing.T) {
+			f, err := newSQLEventFilter(case2.cfg, caseSensitive)
+			require.True(t, errors.ErrorEqual(err, case2.err), "case: %+s", err)
+			for _, c := range case2.cases {
+				skip, err := f.shouldSkipDDL(c.schema, c.table, c.query, c.ddlType)
+				require.NoError(t, err)
+				require.Equal(t, c.skip, skip, "case: %+v", c)
+			}
+		})
 	}
 
 	// filter ddl by IgnoreSQL
@@ -445,12 +539,17 @@ func TestShouldSkipDDL(t *testing.T) {
 			},
 		},
 	}
-	f, err = newSQLEventFilter(case3.cfg)
-	require.True(t, errors.ErrorEqual(err, case3.err), "case: %+s", err)
-	for _, c := range case3.cases {
-		skip, err := f.shouldSkipDDL(c.schema, c.table, c.query, c.ddlType)
-		require.NoError(t, err)
-		require.Equal(t, c.skip, skip, "case: %+v", c)
+
+	for _, caseSensitive := range []bool{true, false} {
+		t.Run(fmt.Sprintf("caseSensitive-%v", caseSensitive), func(t *testing.T) {
+			f, err := newSQLEventFilter(case3.cfg, caseSensitive)
+			require.True(t, errors.ErrorEqual(err, case3.err), "case: %+s", err)
+			for _, c := range case3.cases {
+				skip, err := f.shouldSkipDDL(c.schema, c.table, c.query, c.ddlType)
+				require.NoError(t, err)
+				require.Equal(t, c.skip, skip, "case: %+v", c)
+			}
+		})
 	}
 
 	// config error
@@ -465,7 +564,7 @@ func TestShouldSkipDDL(t *testing.T) {
 		},
 		err: cerror.ErrInvalidIgnoreEventType,
 	}
-	_, err = newSQLEventFilter(case4.cfg)
+	_, err := newSQLEventFilter(case4.cfg, false)
 	require.True(t, errors.ErrorEqual(err, case4.err), "case: %+s", err)
 
 	// config error
@@ -479,7 +578,7 @@ func TestShouldSkipDDL(t *testing.T) {
 			},
 		},
 	}
-	_, err = newSQLEventFilter(case5.cfg)
+	_, err = newSQLEventFilter(case5.cfg, false)
 	require.True(t, errors.ErrorEqual(err, case5.err), "case: %+s", err)
 }
 

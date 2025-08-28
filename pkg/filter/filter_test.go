@@ -459,8 +459,7 @@ func TestShouldIgnoreDML(t *testing.T) {
 func TestShouldIgnoreDMLCaseSensitivity(t *testing.T) {
 	t.Parallel()
 
-	// 1. Case-sensitive test
-	cfgSensitive := &config.FilterConfig{
+	cfg := &config.FilterConfig{
 		Rules: []string{"test.*"},
 		EventFilters: []*config.EventFilterRule{
 			{
@@ -469,53 +468,40 @@ func TestShouldIgnoreDMLCaseSensitivity(t *testing.T) {
 			},
 		},
 	}
-	fSensitive, err := NewFilter(cfgSensitive, "UTC", true, false) // caseSensitive = true
-	require.NoError(t, err)
 
 	ti2Lower := mustNewCommonTableInfo("test", "t2", []*model.ColumnInfo{newColumnInfo(1, "id", mysql.TypeLong, mysql.PriKeyFlag)}, nil)
 	ti2Upper := mustNewCommonTableInfo("test", "T2", []*model.ColumnInfo{newColumnInfo(1, "id", mysql.TypeLong, mysql.PriKeyFlag)}, nil)
 	rowData := datumsToChunkRow(types.MakeDatums(int64(1)), ti2Lower)
 	emptyRow := chunk.Row{}
 
-	// DML on `test.t2` (lowercase), rule is for `test.T2`, should NOT be ignored in case-sensitive mode.
-	ignore, err := fSensitive.ShouldIgnoreDML(common.RowTypeInsert, emptyRow, rowData, ti2Lower)
-	require.NoError(t, err)
-	require.False(t, ignore, "Case-sensitive: DML on 'test.t2' should not be ignored by rule for 'test.T2'")
-
-	// DML on `test.T2` (uppercase), rule is for `test.T2`, should be ignored.
-	ignore, err = fSensitive.ShouldIgnoreDML(common.RowTypeInsert, emptyRow, rowData, ti2Upper)
-	require.NoError(t, err)
-	require.True(t, ignore, "Case-sensitive: DML on 'test.T2' should be ignored by rule for 'test.T2'")
-
-	// 2. Case-insensitive test
-	cfgInsensitive := &config.FilterConfig{
-		Rules: []string{"test.*"},
-		EventFilters: []*config.EventFilterRule{
-			{
-				Matcher:     []string{"test.T2"}, // Uppercase T
-				IgnoreEvent: []bf.EventType{bf.InsertEvent},
-			},
-		},
+	cases := []struct {
+		name          string
+		caseSensitive bool
+		tableInfo     *common.TableInfo
+		shouldIgnore  bool
+		msg           string
+	}{
+		{"sensitive_lowercase_miss", true, ti2Lower, false, "Case-sensitive: DML on 'test.t2' should not be ignored by rule for 'test.T2'"},
+		{"sensitive_uppercase_hit", true, ti2Upper, true, "Case-sensitive: DML on 'test.T2' should be ignored by rule for 'test.T2'"},
+		{"insensitive_lowercase_hit", false, ti2Lower, true, "Case-insensitive: DML on 'test.t2' should be ignored by rule for 'test.T2'"},
+		{"insensitive_uppercase_hit", false, ti2Upper, true, "Case-insensitive: DML on 'test.T2' should be ignored by rule for 'test.T2'"},
 	}
-	fInsensitive, err := NewFilter(cfgInsensitive, "UTC", false, false) // caseSensitive = false
-	require.NoError(t, err)
 
-	// DML on `test.t2` (lowercase), rule is for `test.T2`, should be ignored in case-insensitive mode.
-	ignore, err = fInsensitive.ShouldIgnoreDML(common.RowTypeInsert, emptyRow, rowData, ti2Lower)
-	require.NoError(t, err)
-	require.True(t, ignore, "Case-insensitive: DML on 'test.t2' should be ignored by rule for 'test.T2'")
-
-	// DML on `test.T2` (uppercase), rule is for `test.T2`, should be ignored.
-	ignore, err = fInsensitive.ShouldIgnoreDML(common.RowTypeInsert, emptyRow, rowData, ti2Upper)
-	require.NoError(t, err)
-	require.True(t, ignore, "Case-insensitive: DML on 'test.T2' should be ignored by rule for 'test.T2'")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := NewFilter(cfg, "UTC", tc.caseSensitive, false)
+			require.NoError(t, err)
+			ignore, err := f.ShouldIgnoreDML(common.RowTypeInsert, emptyRow, rowData, tc.tableInfo)
+			require.NoError(t, err)
+			require.Equal(t, tc.shouldIgnore, ignore, tc.msg)
+		})
+	}
 }
 
 func TestShouldIgnoreDDLCaseSensitivity(t *testing.T) {
 	t.Parallel()
 
-	// 1. Case-sensitive test
-	cfgSensitive := &config.FilterConfig{
+	cfg := &config.FilterConfig{
 		Rules: []string{"test.*"},
 		EventFilters: []*config.EventFilterRule{
 			{
@@ -524,41 +510,31 @@ func TestShouldIgnoreDDLCaseSensitivity(t *testing.T) {
 			},
 		},
 	}
-	fSensitive, err := NewFilter(cfgSensitive, "UTC", true, false) // caseSensitive = true
-	require.NoError(t, err)
 
-	// DDL on `test.t1` (lowercase), rule is for `test.T1`, should NOT be ignored in case-sensitive mode.
-	ignore, err := fSensitive.ShouldIgnoreDDL("test", "t1", "DROP TABLE t1", model.ActionDropTable, nil)
-	require.NoError(t, err)
-	require.False(t, ignore, "Case-sensitive: DDL on 'test.t1' should not be ignored by rule for 'test.T1'")
-
-	// DDL on `test.T1` (uppercase), rule is for `test.T1`, should be ignored.
-	ignore, err = fSensitive.ShouldIgnoreDDL("test", "T1", "DROP TABLE T1", model.ActionDropTable, nil)
-	require.NoError(t, err)
-	require.True(t, ignore, "Case-sensitive: DDL on 'test.T1' should be ignored by rule for 'test.T1'")
-
-	// 2. Case-insensitive test
-	cfgInsensitive := &config.FilterConfig{
-		Rules: []string{"test.*"},
-		EventFilters: []*config.EventFilterRule{
-			{
-				Matcher:     []string{"test.T1"}, // Uppercase T
-				IgnoreEvent: []bf.EventType{bf.DropTable},
-			},
-		},
+	cases := []struct {
+		name          string
+		caseSensitive bool
+		schema        string
+		table         string
+		query         string
+		shouldIgnore  bool
+		msg           string
+	}{
+		{"sensitive_lowercase_miss", true, "test", "t1", "DROP TABLE t1", false, "Case-sensitive: DDL on 'test.t1' should not be ignored by rule for 'test.T1'"},
+		{"sensitive_uppercase_hit", true, "test", "T1", "DROP TABLE T1", true, "Case-sensitive: DDL on 'test.T1' should be ignored by rule for 'test.T1'"},
+		{"insensitive_lowercase_hit", false, "test", "t1", "DROP TABLE t1", true, "Case-insensitive: DDL on 'test.t1' should be ignored by rule for 'test.T1'"},
+		{"insensitive_uppercase_hit", false, "test", "T1", "DROP TABLE T1", true, "Case-insensitive: DDL on 'test.T1' should be ignored by rule for 'test.T1'"},
 	}
-	fInsensitive, err := NewFilter(cfgInsensitive, "UTC", false, false) // caseSensitive = false
-	require.NoError(t, err)
 
-	// DDL on `test.t1` (lowercase), rule is for `test.T1`, should be ignored in case-insensitive mode.
-	ignore, err = fInsensitive.ShouldIgnoreDDL("test", "t1", "DROP TABLE t1", model.ActionDropTable, nil)
-	require.NoError(t, err)
-	require.True(t, ignore, "Case-insensitive: DDL on 'test.t1' should be ignored by rule for 'test.T1'")
-
-	// DDL on `test.T1` (uppercase), rule is for `test.T1`, should be ignored.
-	ignore, err = fInsensitive.ShouldIgnoreDDL("test", "T1", "DROP TABLE T1", model.ActionDropTable, nil)
-	require.NoError(t, err)
-	require.True(t, ignore, "Case-insensitive: DDL on 'test.T1' should be ignored by rule for 'test.T1'")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := NewFilter(cfg, "UTC", tc.caseSensitive, false)
+			require.NoError(t, err)
+			ignore, err := f.ShouldIgnoreDDL(tc.schema, tc.table, tc.query, model.ActionDropTable, nil)
+			require.NoError(t, err)
+			require.Equal(t, tc.shouldIgnore, ignore, tc.msg)
+		})
+	}
 }
 
 func TestIsAllowedDDL(t *testing.T) {

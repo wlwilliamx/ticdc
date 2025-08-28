@@ -250,6 +250,7 @@ func TestSQLEventFilterDDL(t *testing.T) {
 		})
 	}
 }
+
 func TestSQLEventFilterCaseSensitivity(t *testing.T) {
 	t.Parallel()
 	cfg := &config.FilterConfig{

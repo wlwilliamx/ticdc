@@ -1508,33 +1508,40 @@ func extractTableInfoFuncForRemovePartitioning(event *PersistedDDLEvent, tableID
 func buildDDLEventCommon(rawEvent *PersistedDDLEvent, tableFilter filter.Filter, tiDBOnly bool) (commonEvent.DDLEvent, bool, error) {
 	var wrapTableInfo *common.TableInfo
 	// Note: not all ddl types will respect the `filtered` result: create tables, rename tables, rename table, exchange table partition.
-	filtered, notSync, err := filterDDL(
-		tableFilter,
-		rawEvent.SchemaName,
-		rawEvent.TableName,
-		rawEvent.Query,
-		model.ActionType(rawEvent.Type),
-		rawEvent.TableInfo,
-		rawEvent.StartTs,
-	)
-	if err != nil {
-		return commonEvent.DDLEvent{}, false, err
+	filtered, notSync := false, false
+	var err error
+	if tableFilter != nil && rawEvent.SchemaName != "" && rawEvent.TableName != "" {
+		filtered, notSync, err = filterDDL(
+			tableFilter,
+			rawEvent.SchemaName,
+			rawEvent.TableName,
+			rawEvent.Query,
+			model.ActionType(rawEvent.Type),
+			rawEvent.TableInfo,
+			rawEvent.StartTs,
+		)
+		if err != nil {
+			return commonEvent.DDLEvent{}, false, err
+		}
+		if rawEvent.ExtraSchemaName != "" && rawEvent.ExtraTableName != "" {
+			filteredByExtraTable, notSyncByExtraTable := false, false
+			filteredByExtraTable, notSyncByExtraTable, err = filterDDL(
+				tableFilter,
+				rawEvent.ExtraSchemaName,
+				rawEvent.ExtraTableName,
+				rawEvent.Query,
+				model.ActionType(rawEvent.Type),
+				rawEvent.TableInfo,
+				rawEvent.StartTs,
+			)
+			if err != nil {
+				return commonEvent.DDLEvent{}, false, err
+			}
+			filtered = filtered && filteredByExtraTable
+			notSync = notSync || notSyncByExtraTable
+		}
 	}
-	// if the ddl involve another table name, only set filtered to true when all of them should be filtered
-	filteredByExtraTable, notSyncByExtraTable, err := filterDDL(
-		tableFilter,
-		rawEvent.ExtraSchemaName,
-		rawEvent.ExtraTableName,
-		rawEvent.Query,
-		model.ActionType(rawEvent.Type),
-		rawEvent.TableInfo,
-		rawEvent.StartTs,
-	)
-	if err != nil {
-		return commonEvent.DDLEvent{}, false, err
-	}
-	filtered = filtered && filteredByExtraTable
-	notSync = notSync || notSyncByExtraTable
+
 	if filtered {
 		log.Info("discard DDL by filter(ShouldDiscardDDL)",
 			zap.String("schema", rawEvent.SchemaName),

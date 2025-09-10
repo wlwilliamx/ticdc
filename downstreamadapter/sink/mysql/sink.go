@@ -127,6 +127,7 @@ func (s *Sink) Run(ctx context.Context) error {
 	})
 	for idx := range s.dmlWriter {
 		g.Go(func() error {
+			defer s.conflictDetector.CloseNotifiedNodes()
 			return s.runDMLWriter(ctx, idx)
 		})
 	}
@@ -273,19 +274,19 @@ func (s *Sink) GetStartTsList(
 		isSyncpointList := make([]bool, len(startTsList))
 		return startTsList, isSyncpointList, nil
 	}
-
 	ddlTsList, isSyncpointList, err := s.ddlWriter.GetStartTsList(tableIds)
 	if err != nil {
 		s.isNormal.Store(false)
 		return nil, nil, err
 	}
+	newStartTsList := make([]int64, len(startTsList))
 	for idx, ddlTs := range ddlTsList {
 		if startTsList[idx] > ddlTs {
 			isSyncpointList[idx] = false
 		}
-		startTsList[idx] = max(ddlTs, startTsList[idx])
+		newStartTsList[idx] = max(ddlTs, startTsList[idx])
 	}
-	return startTsList, isSyncpointList, nil
+	return newStartTsList, isSyncpointList, nil
 }
 
 func (s *Sink) Close(removeChangefeed bool) {
@@ -297,7 +298,7 @@ func (s *Sink) Close(removeChangefeed bool) {
 		}
 	}
 
-	s.conflictDetector.Close()
+	s.conflictDetector.CloseNotifiedNodes()
 	s.ddlWriter.Close()
 	for _, w := range s.dmlWriter {
 		w.Close()

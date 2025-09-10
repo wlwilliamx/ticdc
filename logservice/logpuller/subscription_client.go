@@ -338,7 +338,7 @@ func (s *subscriptionClient) Subscribe(
 	defer func() {
 		log.Info("subscribes span done",
 			zap.Uint64("subscriptionID", uint64(subID)),
-			zap.String("span", span.String()))
+			zap.Uint64("startTs", startTs))
 	}()
 
 	rt := s.newSubscribedSpan(subID, span, startTs, consumeKVEvents, advanceResolvedTs, advanceInterval)
@@ -719,6 +719,7 @@ func (s *subscriptionClient) handleErrors(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
+			log.Info("subscription client handle errors exit")
 			return ctx.Err()
 		case errInfo := <-s.errCache.errCh:
 			if err := s.doHandleError(ctx, errInfo); err != nil {
@@ -735,6 +736,7 @@ func (s *subscriptionClient) doHandleError(ctx context.Context, errInfo regionEr
 		innerErr := eerr.err
 		log.Debug("cdc region error",
 			zap.Uint64("subscriptionID", uint64(errInfo.subscribedSpan.subID)),
+			zap.Uint64("regionID", errInfo.verID.GetID()),
 			zap.Stringer("error", innerErr))
 
 		if notLeader := innerErr.GetNotLeader(); notLeader != nil {
@@ -930,7 +932,7 @@ func (s *subscriptionClient) logSlowRegions(ctx context.Context) error {
 			ckptTime := oracle.GetTimeFromTS(attr.SlowestRegion.ResolvedTs)
 			if attr.SlowestRegion.Initialized {
 				if currTime.Sub(ckptTime) > 2*resolveLockMinInterval {
-					log.Debug("subscription client finds a initialized slow region",
+					log.Info("subscription client finds a initialized slow region",
 						zap.Uint64("subscriptionID", uint64(subscriptionID)),
 						zap.Any("slowRegion", attr.SlowestRegion))
 				}
@@ -1055,7 +1057,11 @@ func (e *errCache) dispatch(ctx context.Context) error {
 		errInfo := e.cache[0]
 		e.cache = e.cache[1:]
 		e.Unlock()
-		e.errCh <- errInfo
+		select {
+		case <-ctx.Done():
+			log.Info("subscription client dispatch err cache done")
+		case e.errCh <- errInfo:
+		}
 	}
 	for {
 		select {

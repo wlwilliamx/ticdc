@@ -16,12 +16,37 @@ package common
 import (
 	"testing"
 
+	"github.com/pingcap/ticdc/pkg/errors"
 	"github.com/pingcap/tidb/pkg/meta/model"
 	"github.com/pingcap/tidb/pkg/parser/ast"
 	"github.com/pingcap/tidb/pkg/parser/mysql"
 	"github.com/pingcap/tidb/pkg/types"
 	"github.com/stretchr/testify/require"
 )
+
+// Helper to create a model.ColumnInfo
+func newColumnInfo(id int64, name string, tp byte, flag uint) *model.ColumnInfo {
+	ft := types.NewFieldType(tp)
+	ft.AddFlag(flag)
+	return &model.ColumnInfo{
+		ID:        id,
+		Name:      ast.NewCIStr(name),
+		FieldType: *ft,
+		State:     model.StatePublic,
+		Version:   model.CurrLatestColumnInfoVersion,
+	}
+}
+
+// Helper to create a model.IndexInfo
+func newIndexInfo(name string, cols []*model.IndexColumn, isPrimary, isUnique bool) *model.IndexInfo {
+	return &model.IndexInfo{
+		Name:    ast.NewCIStr(name),
+		Columns: cols,
+		Primary: isPrimary,
+		Unique:  isUnique,
+		State:   model.StatePublic,
+	}
+}
 
 /*
 func TestColumnSchema_GetColumnList(t *testing.T) {
@@ -207,28 +232,40 @@ func TestColumnsByNames(t *testing.T) {
 				Name: ast.NewCIStr("col3"),
 				ID:   2,
 			},
+			{
+				Name:                ast.NewCIStr("col4"),
+				ID:                  3,
+				GeneratedExprString: "generated",
+			},
 		},
 	})
 
 	names := []string{"col1", "col2", "col3"}
-	offsets, ok := tableInfo.OffsetsByNames(names)
-	require.True(t, ok)
+	offsets, err := tableInfo.OffsetsByNames(names)
+	require.NoError(t, err)
 	require.Equal(t, []int{1, 0, 2}, offsets)
 
 	names = []string{"col2"}
-	offsets, ok = tableInfo.OffsetsByNames(names)
-	require.True(t, ok)
+	offsets, err = tableInfo.OffsetsByNames(names)
+	require.NoError(t, err)
 	require.Equal(t, []int{0}, offsets)
 
 	names = []string{"col1", "col-not-found"}
-	offsets, ok = tableInfo.OffsetsByNames(names)
-	require.False(t, ok)
+	offsets, err = tableInfo.OffsetsByNames(names)
+	require.ErrorIs(t, err, errors.ErrDispatcherFailed)
+	require.ErrorContains(t, err, "columns not found")
 	require.Nil(t, offsets)
 
 	names = []string{"Col1", "COL2", "CoL3"}
-	offsets, ok = tableInfo.OffsetsByNames(names)
-	require.True(t, ok)
+	offsets, err = tableInfo.OffsetsByNames(names)
+	require.NoError(t, err)
 	require.Equal(t, []int{1, 0, 2}, offsets)
+
+	names = []string{"Col4"}
+	offsets, err = tableInfo.OffsetsByNames(names)
+	require.ErrorIs(t, err, errors.ErrDispatcherFailed)
+	require.ErrorContains(t, err, "found virtual generated columns")
+	require.Nil(t, offsets)
 }
 
 func TestHandleKey(t *testing.T) {
@@ -448,4 +485,74 @@ func TestGetOrSetColumnSchema_SharedSchema(t *testing.T) {
 	// Verify that different schema creates a different columnSchema object
 	require.NotEqual(t, columnSchema1, columnSchema3, "Tables with different schema should have different columnSchema objects")
 	require.NotEqual(t, columnSchema1.Digest, columnSchema3.Digest, "Digest should be different for tables with different schema")
+}
+
+func TestIsEligible(t *testing.T) {
+	t.Parallel()
+
+	// 1. Table with PK
+	tiWithPK := WrapTableInfo("test", &model.TableInfo{
+		Name: ast.NewCIStr("t1"),
+		Columns: []*model.ColumnInfo{
+			newColumnInfo(1, "id", mysql.TypeLong, mysql.PriKeyFlag),
+		},
+		PKIsHandle: true,
+	})
+
+	// 2. Table with UK on not-null column
+	tiWithUK := WrapTableInfo("test", &model.TableInfo{
+		Name: ast.NewCIStr("t2"),
+		Columns: []*model.ColumnInfo{
+			newColumnInfo(1, "id", mysql.TypeLong, mysql.NotNullFlag),
+		},
+		Indices: []*model.IndexInfo{
+			newIndexInfo("uk_id", []*model.IndexColumn{{Name: ast.NewCIStr("id"), Offset: 0}}, false, true),
+		},
+	})
+
+	// 3. Table with UK on nullable column (ineligible)
+	tiWithNullableUK := WrapTableInfo("test", &model.TableInfo{
+		Name: ast.NewCIStr("t3"),
+		Columns: []*model.ColumnInfo{
+			newColumnInfo(1, "id", mysql.TypeLong, 0),
+		},
+		Indices: []*model.IndexInfo{
+			newIndexInfo("uk_id", []*model.IndexColumn{{Name: ast.NewCIStr("id"), Offset: 0}}, false, true),
+		},
+	})
+
+	// 4. Table with no PK or UK (ineligible)
+	tiNoKey := WrapTableInfo("test", &model.TableInfo{
+		Name: ast.NewCIStr("t4"),
+		Columns: []*model.ColumnInfo{
+			newColumnInfo(1, "id", mysql.TypeLong, 0),
+		},
+	})
+
+	// 5. View (eligible)
+	tiView := WrapTableInfo("test", &model.TableInfo{
+		Name: ast.NewCIStr("v1"),
+	})
+	tiView.View = &model.ViewInfo{}
+
+	// 6. Sequence (ineligible)
+	tiSeq := WrapTableInfo("test", &model.TableInfo{
+		Name: ast.NewCIStr("s1"),
+	})
+	tiSeq.Sequence = &model.SequenceInfo{}
+
+	require.True(t, tiWithPK.IsEligible(false))
+	require.True(t, tiWithUK.IsEligible(false))
+	require.False(t, tiWithNullableUK.IsEligible(false))
+	require.False(t, tiNoKey.IsEligible(false))
+	require.True(t, tiView.IsEligible(false))
+	require.False(t, tiSeq.IsEligible(false))
+
+	// test with forceReplicate = true
+	require.True(t, tiWithPK.IsEligible(true))
+	require.True(t, tiWithUK.IsEligible(true))
+	require.True(t, tiWithNullableUK.IsEligible(true))
+	require.True(t, tiNoKey.IsEligible(true))
+	require.True(t, tiView.IsEligible(true))
+	require.False(t, tiSeq.IsEligible(true), "Sequence should always be ineligible")
 }

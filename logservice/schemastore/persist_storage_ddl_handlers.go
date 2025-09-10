@@ -1587,7 +1587,7 @@ func buildDDLEventCommon(rawEvent *PersistedDDLEvent, tableFilter filter.Filter,
 func filterDDL(tableFilter filter.Filter, schema, table, query string, ddlType model.ActionType, tableInfo *model.TableInfo, startTs uint64) (bool, bool, error) {
 	filtered, notSync := false, false
 	if tableFilter != nil && schema != "" && table != "" {
-		filtered = tableFilter.ShouldDiscardDDL(schema, table, ddlType, tableInfo, startTs)
+		filtered = tableFilter.ShouldDiscardDDL(schema, table, ddlType, common.WrapTableInfo(schema, tableInfo), startTs)
 	}
 	if !filtered {
 		// If the DDL is not filtered, we need to check whether the DDL should be synced to downstream.
@@ -2402,7 +2402,8 @@ func buildDDLEventForCreateTables(rawEvent *PersistedDDLEvent, tableFilter filte
 	logicalTableCount := 0
 	allFiltered := true
 	for _, info := range rawEvent.MultipleTableInfos {
-		if tableFilter != nil && tableFilter.ShouldDiscardDDL(rawEvent.SchemaName, info.Name.O, model.ActionType(rawEvent.Type), info, rawEvent.StartTs) {
+		if tableFilter != nil && tableFilter.ShouldDiscardDDL(
+			rawEvent.SchemaName, info.Name.O, model.ActionType(rawEvent.Type), common.WrapTableInfo(rawEvent.SchemaName, info), rawEvent.StartTs) {
 			continue
 		}
 		allFiltered = false

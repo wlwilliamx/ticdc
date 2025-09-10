@@ -20,6 +20,7 @@ import (
 	"github.com/pingcap/ticdc/maintainer/operator"
 	"github.com/pingcap/ticdc/maintainer/replica"
 	"github.com/pingcap/ticdc/maintainer/span"
+	"github.com/pingcap/ticdc/pkg/common"
 	appcontext "github.com/pingcap/ticdc/pkg/common/context"
 	"github.com/pingcap/ticdc/pkg/config"
 	"github.com/pingcap/ticdc/pkg/node"
@@ -29,34 +30,47 @@ import (
 	"go.uber.org/zap"
 )
 
-// basicScheduler generates operators for the spans, and push them to the operator controller
-// it generates add operator for the absent spans, and move operator for the unbalanced replicating spans
-// currently, it only supports balance the spans by size
+// basicScheduler generates add operators for spans and pushes them to the operator controller.
+// It creates add operators for absent spans to initiate replication.
+//
+// Absent spans fall into two categories:
+// 1. Regular spans with groupID set to DefaultGroupID
+// 2. Split table spans where each table's split spans share the same groupID
+//
+// During the transition from absent to replicating state, spans undergo incremental scanning.
+// To maximize node utilization and balance incremental scan traffic across all nodes,
+// we use each node's current scheduling size per group to guide span allocation.
+//
+// When there are many absent spans, we prioritize scheduling split table spans first,
+// then allocate remaining capacity to regular spans.
+// We ensure the total number of operators never exceeds batchSize.
 type basicScheduler struct {
-	id        string
-	batchSize int
-	// the max scheduling task count for each group in each node.
-	// TODO: we need to select a good value
+	changefeedID common.ChangeFeedID
+	batchSize    int
+	// the max scheduling task count for each non-default group in each node.
 	schedulingTaskCountPerNode int
 
 	operatorController *operator.Controller
 	spanController     *span.Controller
 	nodeManager        *watcher.NodeManager
+	mode               int64
 }
 
 func NewBasicScheduler(
-	id string, batchSize int,
+	changefeedID common.ChangeFeedID, batchSize int,
 	oc *operator.Controller,
 	spanController *span.Controller,
 	schedulerCfg *config.ChangefeedSchedulerConfig,
+	mode int64,
 ) *basicScheduler {
 	scheduler := &basicScheduler{
-		id:                         id,
+		changefeedID:               changefeedID,
 		batchSize:                  batchSize,
 		operatorController:         oc,
 		spanController:             spanController,
 		nodeManager:                appcontext.GetService[*watcher.NodeManager](watcher.NodeManagerName),
 		schedulingTaskCountPerNode: 1,
+		mode:                       mode,
 	}
 
 	if schedulerCfg != nil && schedulerCfg.SchedulingTaskCountPerNode > 0 {
@@ -99,7 +113,6 @@ func (s *basicScheduler) Execute() time.Time {
 		// still have available size, deal with the normal spans
 		s.schedule(pkgreplica.DefaultGroupID, availableSize)
 	}
-
 	return time.Now().Add(time.Millisecond * 500)
 }
 
@@ -146,5 +159,8 @@ func (s *basicScheduler) schedule(groupID pkgreplica.GroupID, availableSize int)
 }
 
 func (s *basicScheduler) Name() string {
-	return "basic-scheduler"
+	if common.IsRedoMode(s.mode) {
+		return pkgScheduler.RedoBasicScheduler
+	}
+	return pkgScheduler.BasicScheduler
 }

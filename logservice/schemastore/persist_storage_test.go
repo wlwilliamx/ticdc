@@ -2213,6 +2213,10 @@ func TestApplyDDLJobs(t *testing.T) {
 							// TableID should be unique, so it is enough
 							return expectedDDLEvent.UpdatedSchemas[i].TableID < expectedDDLEvent.UpdatedSchemas[j].TableID
 						})
+						sort.Slice(actualDDLEvent.UpdatedSchemas, func(i, j int) bool {
+							// TableID should be unique, so it is enough
+							return actualDDLEvent.UpdatedSchemas[i].TableID < actualDDLEvent.UpdatedSchemas[j].TableID
+						})
 						if !reflect.DeepEqual(expectedDDLEvent.UpdatedSchemas, actualDDLEvent.UpdatedSchemas) {
 							return false
 						}
@@ -2238,6 +2242,10 @@ func TestApplyDDLJobs(t *testing.T) {
 						sort.Slice(expectedDDLEvent.NeedAddedTables, func(i, j int) bool {
 							// TableID should be unique, so it is enough
 							return expectedDDLEvent.NeedAddedTables[i].TableID < expectedDDLEvent.NeedAddedTables[j].TableID
+						})
+						sort.Slice(actualDDLEvent.NeedAddedTables, func(i, j int) bool {
+							// TableID should be unique, so it is enough
+							return actualDDLEvent.NeedAddedTables[i].TableID < actualDDLEvent.NeedAddedTables[j].TableID
 						})
 						if !reflect.DeepEqual(expectedDDLEvent.NeedAddedTables, actualDDLEvent.NeedAddedTables) {
 							return false

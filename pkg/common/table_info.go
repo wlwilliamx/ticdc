@@ -23,6 +23,7 @@ import (
 	"sync/atomic"
 
 	"github.com/pingcap/log"
+	"github.com/pingcap/ticdc/pkg/errors"
 	"github.com/pingcap/tidb/pkg/meta/model"
 	"github.com/pingcap/tidb/pkg/parser/ast"
 	"github.com/pingcap/tidb/pkg/types"
@@ -342,6 +343,22 @@ func (ti *TableInfo) HasVirtualColumns() bool {
 	return ti.columnSchema.VirtualColumnCount > 0
 }
 
+// IsEligible returns whether the table is a eligible table
+func (ti *TableInfo) IsEligible(forceReplicate bool) bool {
+	// Sequence is not supported yet, TiCDC needs to filter all sequence tables.
+	// See https://github.com/pingcap/tiflow/issues/4559
+	if ti.IsSequence() {
+		return false
+	}
+	if forceReplicate {
+		return true
+	}
+	if ti.IsView() {
+		return true
+	}
+	return len(ti.columnSchema.HandleKeyIDs) != 0
+}
+
 // GetIndex return the corresponding index by the given name.
 func (ti *TableInfo) GetIndex(name string) *model.IndexInfo {
 	for _, index := range ti.columnSchema.Indices {
@@ -375,25 +392,36 @@ func (ti *TableInfo) IndexByName(name string) ([]string, []int, bool) {
 // Column is not case-sensitive on any platform, nor are column aliases.
 // So we always match in lowercase.
 // See also: https://dev.mysql.com/doc/refman/5.7/en/identifier-case-sensitivity.html
-func (ti *TableInfo) OffsetsByNames(names []string) ([]int, bool) {
+func (ti *TableInfo) OffsetsByNames(names []string) ([]int, error) {
 	// todo: optimize it
-	columnOffsets := make(map[string]int, len(ti.columnSchema.Columns))
+	columnOffsets := make(map[string]int)
+	virtualGeneratedColumn := make(map[string]struct{})
 	for idx, col := range ti.columnSchema.Columns {
 		if col != nil {
-			columnOffsets[col.Name.L] = idx
+			if IsColCDCVisible(col) {
+				columnOffsets[col.Name.L] = idx
+			} else {
+				virtualGeneratedColumn[col.Name.L] = struct{}{}
+			}
 		}
 	}
 
 	result := make([]int, 0, len(names))
 	for _, col := range names {
-		offset, ok := columnOffsets[strings.ToLower(col)]
+		name := strings.ToLower(col)
+		if _, ok := virtualGeneratedColumn[name]; ok {
+			return nil, errors.ErrDispatcherFailed.GenWithStack(
+				"found virtual generated columns when dispatch event, table: %v, columns: %v column: %v", ti.GetTableName(), names, name)
+		}
+		offset, ok := columnOffsets[name]
 		if !ok {
-			return nil, false
+			return nil, errors.ErrDispatcherFailed.GenWithStack(
+				"columns not found when dispatch event, table: %v, columns: %v, column: %v", ti.GetTableName(), names, name)
 		}
 		result = append(result, offset)
 	}
 
-	return result, true
+	return result, nil
 }
 
 func (ti *TableInfo) HasPrimaryKey() bool {

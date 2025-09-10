@@ -98,9 +98,9 @@ var defaultReplicaConfig = &ReplicaConfig{
 		EnableTableAcrossNodes:     false,
 		RegionThreshold:            100_000,
 		WriteKeyThreshold:          0,
-		SplitNumberPerNode:         1,
 		SchedulingTaskCountPerNode: 20,  // TODO: choose a btter value
 		RegionCountPerSpan:         100, // TODO: choose a btter value
+		EnableSplittableCheck:      false,
 	},
 	Integrity: &integrity.Config{
 		IntegrityCheckLevel:   integrity.CheckLevelNone,
@@ -283,7 +283,7 @@ func (c *ReplicaConfig) ValidateAndAdjust(sinkURI *url.URL) error { // check sin
 	if c.Scheduler == nil {
 		c.FixScheduler(false)
 	} else {
-		err := c.Scheduler.Validate()
+		err := c.Scheduler.ValidateAndAdjust(sinkURI)
 		if err != nil {
 			return err
 		}

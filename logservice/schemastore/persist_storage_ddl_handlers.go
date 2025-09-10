@@ -1534,7 +1534,7 @@ func buildDDLEventCommon(rawEvent *PersistedDDLEvent, tableFilter filter.Filter,
 		return commonEvent.DDLEvent{}, false, err
 	}
 	filtered = filtered && filteredByExtraTable
-	notSync = notSync && notSyncByExtraTable
+	notSync = notSync || notSyncByExtraTable
 	if filtered {
 		log.Info("discard DDL by filter(ShouldDiscardDDL)",
 			zap.String("schema", rawEvent.SchemaName),

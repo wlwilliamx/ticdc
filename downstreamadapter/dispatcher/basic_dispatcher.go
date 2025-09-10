@@ -15,6 +15,7 @@ package dispatcher
 
 import (
 	"math/rand"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -203,7 +204,34 @@ func (d *BasicDispatcher) AddDMLEventsToSink(events []*commonEvent.DMLEvent) {
 func (d *BasicDispatcher) AddBlockEventToSink(event commonEvent.BlockEvent) error {
 	if event.GetType() == commonEvent.TypeDDLEvent {
 		ddl := event.(*commonEvent.DDLEvent)
-		if ddl.NotSync {
+		if ddl.MultipleNotSync != nil {
+			resultQuerys := make([]string, 0)
+			tableInfos := make([]*common.TableInfo, 0)
+			querys, err := commonEvent.SplitQueries(ddl.Query)
+			if err != nil {
+				log.Panic("split queries failed", zap.Error(err))
+			}
+			if len(querys) != len(ddl.MultipleTableInfos) {
+				log.Panic("the querys is not equal table infos after re-split", zap.Any("querys", querys), zap.Any("tableInfos", ddl.MultipleTableInfos))
+			}
+			for i, notSync := range ddl.MultipleNotSync {
+				if notSync {
+					log.Info("ignore a DDL by MultipleNotSync",
+						zap.Stringer("dispatcher", d.id), zap.Any("ddl", ddl), zap.String("query", querys[i]), zap.Any("tableInfo", ddl.MultipleTableInfos[i]))
+					continue
+				} else {
+					tableInfos = append(tableInfos, ddl.MultipleTableInfos[i])
+					resultQuerys = append(resultQuerys, querys[i])
+				}
+			}
+			if len(resultQuerys) == 0 {
+				d.PassBlockEventToSink(event)
+				return nil
+			}
+			ddl.Query = strings.Join(resultQuerys, "")
+			ddl.MultipleTableInfos = tableInfos
+			ddl.MultipleNotSync = nil
+		} else if ddl.NotSync {
 			log.Info("ignore DDL by NotSync", zap.Stringer("dispatcher", d.id), zap.Any("ddl", ddl))
 			d.PassBlockEventToSink(event)
 			return nil

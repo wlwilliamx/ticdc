@@ -100,9 +100,16 @@ func NewFilter(cfg *config.FilterConfig, tz string, caseSensitive bool, forceRep
 
 // ShouldIgnoreDML checks if a DML event should be ignore by conditions below:
 // 0. By startTs.
-// 1. By table name.
-// 2. By type.
+// 1. By eligibility of the table.
+// 2. By table name.
+// 3. By type.
 func (f *filter) ShouldIgnoreDML(dmlType common.RowType, preRow, row chunk.Row, tableInfo *common.TableInfo) (bool, error) {
+	if !f.isEligible(tableInfo) {
+		log.Info("table is not eligible, should ignore this dml", zap.String("schema", tableInfo.GetSchemaName()), zap.String("table", tableInfo.GetTableName()),
+			zap.Bool("forceReplicate", f.forceReplicate), zap.Bool("hasPKOrNotNullUK", tableInfo.HasPKOrNotNullUK), zap.Any("preRow", preRow), zap.Any("row", row))
+		return true, nil
+	}
+
 	if f.ShouldIgnoreTable(tableInfo.GetSchemaName(), tableInfo.GetTableName(), nil) {
 		return true, nil
 	}
@@ -151,11 +158,6 @@ func (f *filter) ShouldIgnoreTable(db, tbl string, tableInfo *common.TableInfo) 
 		return true
 	}
 
-	if tableInfo != nil && !tableInfo.IsEligible(f.forceReplicate) {
-		log.Info("table is not eligible, should ignore this table", zap.String("db", db), zap.String("table", tbl))
-		return true
-	}
-
 	return !f.tableFilter.MatchTable(db, tbl)
 }
 
@@ -168,6 +170,10 @@ func (f *filter) ShouldIgnoreSchema(schema string) bool {
 func (f *filter) Verify(tableInfos []*common.TableInfo) error {
 	return nil
 	// return f.dmlExprFilter.verify(tableInfos)
+}
+
+func (f *filter) isEligible(tableInfo *common.TableInfo) bool {
+	return tableInfo != nil && tableInfo.IsEligible(f.forceReplicate)
 }
 
 func (f *filter) shouldIgnoreStartTs(ts uint64) bool {

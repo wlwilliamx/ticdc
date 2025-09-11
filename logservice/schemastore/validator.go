@@ -41,6 +41,7 @@ func VerifyTables(f filter.Filter, storage tidbkv.Storage, startTs uint64) (
 	ineligibleTables := make([]string, 0)
 	eligibleTables := make([]string, 0)
 	for _, dbinfo := range dbinfos {
+		log.Info("*************** checking database", zap.Stringer("db", dbinfo.Name))
 		if f.ShouldIgnoreSchema(dbinfo.Name.O) {
 			log.Debug("ignore database", zap.Stringer("db", dbinfo.Name))
 			continue
@@ -50,6 +51,7 @@ func VerifyTables(f filter.Filter, storage tidbkv.Storage, startTs uint64) (
 		if err != nil {
 			return nil, nil, nil, cerror.WrapError(cerror.ErrMetaListDatabases, err)
 		}
+		log.Info("****************** got tables", zap.Int("table count", len(rawTables)), zap.Any("rawTables", rawTables))
 		for _, r := range rawTables {
 			tableKey := string(r.Field)
 			if !strings.HasPrefix(tableKey, mTablePrefix) {
@@ -67,6 +69,7 @@ func VerifyTables(f filter.Filter, storage tidbkv.Storage, startTs uint64) (
 			if err != nil {
 				return nil, nil, nil, errors.Trace(err)
 			}
+			log.Info("****************** checking table", zap.Any("table", tbName), zap.Int64("tableID", tbInfo.ID))
 			tableInfo := common.WrapTableInfo(dbinfo.Name.O, tbInfo)
 			if f.ShouldIgnoreTable(dbinfo.Name.O, tbName.Name.O, tableInfo) {
 				log.Debug("ignore table", zap.String("db", dbinfo.Name.O),

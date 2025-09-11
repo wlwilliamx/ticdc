@@ -20,6 +20,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/pingcap/ticdc/pkg/errors"
+
 	"github.com/pingcap/failpoint"
 	"github.com/pingcap/log"
 	"github.com/pingcap/ticdc/downstreamadapter/sink"
@@ -214,10 +216,11 @@ func (d *BasicDispatcher) AddBlockEventToSink(event commonEvent.BlockEvent) erro
 			tableInfos := make([]*common.TableInfo, 0)
 			querys, err := commonEvent.SplitQueries(ddl.Query)
 			if err != nil {
-				log.Panic("split queries failed", zap.Error(err))
+				return errors.Trace(err)
 			}
 			if len(querys) != len(ddl.MultipleTableInfos) {
-				log.Panic("the querys is not equal table infos after re-split", zap.Any("querys", querys), zap.Any("tableInfos", ddl.MultipleTableInfos))
+				log.Error("the querys is not equal table infos after re-split", zap.Any("querys", querys), zap.Any("tableInfos", ddl.MultipleTableInfos))
+				return errors.ErrUnexpected.GenWithStack("the querys is not equal table infos after re-split")
 			}
 			for i, notSync := range ddl.MultipleNotSync {
 				if notSync {

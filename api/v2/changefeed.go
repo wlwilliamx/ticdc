@@ -1286,7 +1286,7 @@ func getVerifiedTables(
 		return nil, nil, err
 	}
 	log.Info("verifyTables completed",
-		zap.Int("table count", len(tableInfos)),
+		zap.Int("tableCount", len(tableInfos)),
 		zap.Strings("ineligibleTables", ineligibleTables),
 		zap.Strings("eligibleTables", eligibleTables),
 		zap.Uint64("startTs", startTs))

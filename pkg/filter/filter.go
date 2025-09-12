@@ -118,8 +118,6 @@ func NewFilter(cfg *config.FilterConfig, tz string, caseSensitive bool, forceRep
 // 3. By type.
 func (f *filter) ShouldIgnoreDML(dmlType common.RowType, preRow, row chunk.Row, tableInfo *common.TableInfo, startTs uint64) (bool, error) {
 	if !f.isEligible(tableInfo) {
-		log.Info("table is not eligible, should ignore this dml", zap.String("schema", tableInfo.GetSchemaName()), zap.String("table", tableInfo.GetTableName()),
-			zap.Bool("forceReplicate", f.forceReplicate), zap.Bool("hasPKOrNotNullUK", tableInfo.HasPKOrNotNullUK), zap.Any("preRow", preRow), zap.Any("row", row))
 		return true, nil
 	}
 

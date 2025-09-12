@@ -60,7 +60,7 @@ type Filter interface {
 	// Then, for the following DDLs:
 	//  1. `CREATE TABLE test.worker` will be ignored, but the table will be replicated by changefeed-test.
 	//  2. `CREATE TABLE other.worker` will be discarded, and the table will not be replicated by changefeed-test.
-	ShouldIgnoreDDL(schema, table, query string, ddlType timodel.ActionType) (bool, error)
+	ShouldIgnoreDDL(schema, table, query string, ddlType timodel.ActionType, tableInfo *common.TableInfo) (bool, error)
 	// ShouldIgnoreTable returns true if the table should be ignored.
 	ShouldIgnoreTable(schema, table string, tableInfo *common.TableInfo) bool
 	// ShouldIgnoreSchema returns true if the schema should be ignored.
@@ -166,7 +166,12 @@ func (f *filter) ShouldDiscardDDL(schema, table string, ddlType timodel.ActionTy
 // ShouldIgnoreDDL checks if a DDL event should be ignore by conditions below:
 // 1. By ddl type.
 // 2. By ddl query.
-func (f *filter) ShouldIgnoreDDL(schema, table, query string, ddlType timodel.ActionType) (bool, error) {
+func (f *filter) ShouldIgnoreDDL(schema, table, query string, ddlType timodel.ActionType, tableInfo *common.TableInfo) (bool, error) {
+	if !f.isEligible(tableInfo) {
+		log.Info("table is not eligible, should ignore this ddl", zap.String("schema", tableInfo.GetSchemaName()), zap.String("table", tableInfo.GetTableName()),
+			zap.Bool("forceReplicate", f.forceReplicate), zap.Bool("hasPKOrNotNullUK", tableInfo.HasPKOrNotNullUK), zap.String("query", query))
+		return true, nil
+	}
 	return f.sqlEventFilter.shouldSkipDDL(schema, table, query, ddlType)
 }
 
@@ -192,7 +197,11 @@ func (f *filter) Verify(tableInfos []*common.TableInfo) error {
 }
 
 func (f *filter) isEligible(tableInfo *common.TableInfo) bool {
-	return tableInfo != nil && tableInfo.IsEligible(f.forceReplicate)
+	if tableInfo == nil {
+		// This should happen in test only
+		return true
+	}
+	return tableInfo.IsEligible(f.forceReplicate)
 }
 
 func (f *filter) shouldIgnoreStartTs(ts uint64) bool {

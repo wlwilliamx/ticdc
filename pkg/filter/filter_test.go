@@ -319,22 +319,22 @@ func TestShouldIgnoreDDL(t *testing.T) {
 	require.NoError(t, err)
 
 	// DDL matches an event filter rule (drop table), should ignore.
-	ignore, err := f.ShouldIgnoreDDL("test", "t1", "DROP TABLE t1", model.ActionDropTable)
+	ignore, err := f.ShouldIgnoreDDL("test", "t1", "DROP TABLE t1", model.ActionDropTable, nil)
 	require.NoError(t, err)
 	require.True(t, ignore)
 
 	// DDL (create table) does not match event filter, should not ignore.
-	ignore, err = f.ShouldIgnoreDDL("test", "t1", "CREATE TABLE t1(id int)", model.ActionCreateTable)
+	ignore, err = f.ShouldIgnoreDDL("test", "t1", "CREATE TABLE t1(id int)", model.ActionCreateTable, nil)
 	require.NoError(t, err)
 	require.False(t, ignore)
 
 	// DDL matches an SQL regex rule, should ignore.
-	ignore, err = f.ShouldIgnoreDDL("test", "t2", "DROP TABLE t2", model.ActionDropTable)
+	ignore, err = f.ShouldIgnoreDDL("test", "t2", "DROP TABLE t2", model.ActionDropTable, nil)
 	require.NoError(t, err)
 	require.True(t, ignore)
 
 	// DDL does not match any rule, should not ignore.
-	ignore, err = f.ShouldIgnoreDDL("test", "t3", "CREATE TABLE t3(id int)", model.ActionCreateTable)
+	ignore, err = f.ShouldIgnoreDDL("test", "t3", "CREATE TABLE t3(id int)", model.ActionCreateTable, nil)
 	require.NoError(t, err)
 	require.False(t, ignore)
 }
@@ -472,7 +472,7 @@ func TestShouldIgnoreDDLCaseSensitivity(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f, err := NewFilter(cfg, "UTC", tc.caseSensitive, false)
 			require.NoError(t, err)
-			ignore, err := f.ShouldIgnoreDDL(tc.schema, tc.table, tc.query, model.ActionDropTable)
+			ignore, err := f.ShouldIgnoreDDL(tc.schema, tc.table, tc.query, model.ActionDropTable, nil)
 			require.NoError(t, err)
 			require.Equal(t, tc.shouldIgnore, ignore, tc.msg)
 		})

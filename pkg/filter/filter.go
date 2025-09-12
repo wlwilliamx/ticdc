@@ -162,8 +162,9 @@ func (f *filter) ShouldDiscardDDL(schema, table string, ddlType timodel.ActionTy
 }
 
 // ShouldIgnoreDDL checks if a DDL event should be ignore by conditions below:
-// 1. By ddl type.
-// 2. By ddl query.
+// 1. By eligibility of the table.
+// 2. By ddl type.
+// 3. By ddl query.
 func (f *filter) ShouldIgnoreDDL(schema, table, query string, ddlType timodel.ActionType, tableInfo *common.TableInfo) (bool, error) {
 	if !f.isEligible(tableInfo) {
 		log.Info("table is not eligible, should ignore this ddl", zap.String("schema", tableInfo.GetSchemaName()), zap.String("table", tableInfo.GetTableName()),

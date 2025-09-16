@@ -212,33 +212,39 @@ func (d *BasicDispatcher) AddBlockEventToSink(event commonEvent.BlockEvent) erro
 	if event.GetType() == commonEvent.TypeDDLEvent {
 		ddl := event.(*commonEvent.DDLEvent)
 		if ddl.MultipleNotSync != nil {
-			resultQuerys := make([]string, 0)
-			tableInfos := make([]*common.TableInfo, 0)
-			querys, err := commonEvent.SplitQueries(ddl.Query)
+			newEvent, err := ddl.Clone()
 			if err != nil {
 				return errors.Trace(err)
 			}
-			if len(querys) != len(ddl.MultipleTableInfos) {
-				log.Error("the querys is not equal table infos after re-split", zap.Any("querys", querys), zap.Any("tableInfos", ddl.MultipleTableInfos))
+			resultQuerys := make([]string, 0)
+			tableInfos := make([]*common.TableInfo, 0)
+			querys, err := commonEvent.SplitQueries(newEvent.Query)
+			if err != nil {
+				return errors.Trace(err)
+			}
+			if len(querys) != len(newEvent.MultipleTableInfos) {
+				log.Error("the querys is not equal table infos after re-split", zap.Any("querys", querys), zap.Any("tableInfos", newEvent.MultipleTableInfos))
 				return errors.ErrUnexpected.GenWithStack("the querys is not equal table infos after re-split")
 			}
-			for i, notSync := range ddl.MultipleNotSync {
+			for i, notSync := range newEvent.MultipleNotSync {
 				if notSync {
 					log.Info("ignore a DDL by MultipleNotSync",
-						zap.Stringer("dispatcher", d.id), zap.Any("ddl", ddl), zap.String("query", querys[i]), zap.Any("tableInfo", ddl.MultipleTableInfos[i]))
+						zap.Stringer("dispatcher", d.id), zap.Any("ddl", newEvent), zap.String("query", querys[i]), zap.Any("tableInfo", newEvent.MultipleTableInfos[i]))
 					continue
 				} else {
-					tableInfos = append(tableInfos, ddl.MultipleTableInfos[i])
+					tableInfos = append(tableInfos, newEvent.MultipleTableInfos[i])
 					resultQuerys = append(resultQuerys, querys[i])
 				}
 			}
 			if len(resultQuerys) == 0 {
-				d.PassBlockEventToSink(event)
+				d.PassBlockEventToSink(newEvent)
 				return nil
 			}
-			ddl.Query = strings.Join(resultQuerys, "")
-			ddl.MultipleTableInfos = tableInfos
-			ddl.MultipleNotSync = nil
+			newEvent.Query = strings.Join(resultQuerys, "")
+			newEvent.MultipleTableInfos = tableInfos
+			newEvent.MultipleNotSync = nil
+			d.tableProgress.Add(newEvent)
+			return d.sink.WriteBlockEvent(newEvent)
 		} else if ddl.NotSync {
 			log.Info("ignore DDL by NotSync", zap.Stringer("dispatcher", d.id), zap.Any("ddl", ddl))
 			d.PassBlockEventToSink(event)

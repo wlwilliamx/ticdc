@@ -267,6 +267,18 @@ func (e *DDLEvent) GetDDLType() model.ActionType {
 	return model.ActionType(e.Type)
 }
 
+func (e *DDLEvent) SetTableInfoToDispatcherNeeded(tablename string) {
+	if e.MultipleTableInfos == nil {
+		return
+	}
+	for _, info := range e.MultipleTableInfos {
+		if info.GetTableName() == tablename {
+			e.TableInfo = info
+			return
+		}
+	}
+}
+
 func (t DDLEvent) Marshal() ([]byte, error) {
 	// restData | dispatcherIDData | dispatcherIDDataSize | tableInfoData | tableInfoDataSize | multipleTableInfos | multipletableInfosDataSize |errorData | errorDataSize
 	data, err := json.Marshal(t)

@@ -19,7 +19,6 @@ import (
 	"fmt"
 
 	"github.com/pingcap/errors"
-
 	"github.com/pingcap/log"
 	"github.com/pingcap/ticdc/pkg/common"
 	"github.com/pingcap/tidb/pkg/meta/model"

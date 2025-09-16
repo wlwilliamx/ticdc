@@ -209,8 +209,15 @@ func (d *BasicDispatcher) AddDMLEventsToSink(events []*commonEvent.DMLEvent) {
 }
 
 func (d *BasicDispatcher) AddBlockEventToSink(event commonEvent.BlockEvent) error {
+	// For ddl event, we need to check whether it should be sent to downstream.
+	// It may be marked as not sync by filter when building the event.
 	if event.GetType() == commonEvent.TypeDDLEvent {
 		ddl := event.(*commonEvent.DDLEvent)
+		// We need to check MultipleNotSync first.
+		// If MultipleNotSync is not nil, it means the DDL involves multiple tables.
+		// Such as create multiple tables, rename multiple tables.
+		// In this case, NotSync is always false and not effective.
+		// We need to check MultipleNotSync to determine which table DDL should be sent to downstream.
 		if ddl.MultipleNotSync != nil {
 			newEvent, err := ddl.Clone()
 			if err != nil {
@@ -246,6 +253,9 @@ func (d *BasicDispatcher) AddBlockEventToSink(event commonEvent.BlockEvent) erro
 			d.tableProgress.Add(newEvent)
 			return d.sink.WriteBlockEvent(newEvent)
 		} else if ddl.NotSync {
+			// For single table ddl, we just need to check NotSync.
+			// If NotSync is true, it means the DDL should not be sent to downstream.
+			// So we just call PassBlockEventToSink to update the table progress and call the postFlush func.
 			log.Info("ignore DDL by NotSync", zap.Stringer("dispatcher", d.id), zap.Any("ddl", ddl))
 			d.PassBlockEventToSink(event)
 			return nil

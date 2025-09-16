@@ -107,8 +107,16 @@ type DDLEvent struct {
 	// should be sent to downstream.
 	// So we should send the `TRUNCATE TABLE` DDL event to table trigger,
 	// to ensure the new truncated table can be handled correctly.
+	// If the DDL involves multiple tables, this field is not effective.
+	// In this case, use MultipleNotSync instead.
 	NotSync bool `msg:"not_sync"`
 	// MultipleNotSync is used to indicate whether multiple table DDLs should be synced to downstream.
+	// Such as create multiple tables, rename multiple tables.
+	// If one of the multiple table DDLs should not be synced, the corresponding index in MultipleNotSync is true.
+	// Otherwise, it is false.
+	// If the DDL involves only one table, this field is nil.
+	// This field is used together with MultipleTableInfos and query.
+	// The length of MultipleNotSync should be equal to the length of MultipleTableInfos.
 	MultipleNotSync []bool `msg:"multiple_not_sync"`
 }
 

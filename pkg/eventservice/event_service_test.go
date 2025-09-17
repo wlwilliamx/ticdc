@@ -153,7 +153,7 @@ func TestEventServiceBasic(t *testing.T) {
 				log.Info("receive watermark", zap.Uint64("ts", e.Events[0].ResolvedTs))
 			}
 		}
-		if msgCnt == 5 {
+		if msgCnt >= 5 {
 			break
 		}
 	}

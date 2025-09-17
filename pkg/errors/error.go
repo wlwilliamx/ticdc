@@ -768,6 +768,11 @@ var (
 		"operator created failed",
 		errors.RFCCodeText("CDC:ErrOperatorIsNil"),
 	)
+
+	ErrTableAfterDDLNotSplitable = errors.Normalize(
+		"the ddl event will break splitable of this table",
+		errors.RFCCodeText("CDC:ErrTableAfterNotSplitable"),
+	)
 )
 
 // ErrorType defines the type of application errors

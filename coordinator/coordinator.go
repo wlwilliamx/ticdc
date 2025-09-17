@@ -27,6 +27,7 @@ import (
 	"github.com/pingcap/ticdc/pkg/config/kerneltype"
 	"github.com/pingcap/ticdc/pkg/errors"
 	cerror "github.com/pingcap/ticdc/pkg/errors"
+	"github.com/pingcap/ticdc/pkg/keyspace"
 	"github.com/pingcap/ticdc/pkg/messaging"
 	"github.com/pingcap/ticdc/pkg/metrics"
 	"github.com/pingcap/ticdc/pkg/node"
@@ -458,9 +459,10 @@ func (c *coordinator) updateAllKeyspaceGcBarriers(ctx context.Context) error {
 
 func (c *coordinator) updateKeyspaceGcBarrier(ctx context.Context, barrierMap map[string]uint64, keyspaceName string) error {
 	// Obtain keyspace metadata from PD
-	keyspaceMeta, err := c.pdClient.LoadKeyspace(ctx, keyspaceName)
+	keyspaceManager := appcontext.GetService[keyspace.KeyspaceManager](appcontext.KeyspaceManager)
+	keyspaceMeta, err := keyspaceManager.LoadKeyspace(ctx, keyspaceName)
 	if err != nil {
-		return cerror.ErrLoadKeyspaceFailed.Wrap(err)
+		return cerror.WrapError(cerror.ErrLoadKeyspaceFailed, err)
 	}
 	keyspaceID := keyspaceMeta.Id
 
@@ -471,7 +473,7 @@ func (c *coordinator) updateKeyspaceGcBarrier(ctx context.Context, barrierMap ma
 	}
 
 	barrierTsUpperBound := barrierTS - 1
-	err = c.gcManager.TryUpdateKeypsaceGCBarrier(ctx, keyspaceID, keyspaceName, barrierTsUpperBound, false)
+	err = c.gcManager.TryUpdateKeyspaceGCBarrier(ctx, keyspaceID, keyspaceName, barrierTsUpperBound, false)
 	return errors.Trace(err)
 }
 

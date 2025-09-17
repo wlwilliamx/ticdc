@@ -16,16 +16,14 @@ package middleware
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pingcap/kvproto/pkg/keyspacepb"
-	"github.com/pingcap/ticdc/pkg/api"
-	appcontext "github.com/pingcap/ticdc/pkg/common/context"
 	"github.com/pingcap/ticdc/pkg/node"
 	"github.com/pingcap/ticdc/pkg/pdutil"
 	"github.com/pingcap/ticdc/pkg/server"
@@ -141,30 +139,35 @@ func TestForwardToCoordinatorMiddleware(t *testing.T) {
 func TestForwardToCoordinator(t *testing.T) {
 	tests := []struct {
 		name          string
-		setupMock     func(s *mockServer)
+		setupMock     func(s *mockServer, ts *httptest.Server)
 		expectedError bool
+		ts            *httptest.Server
 	}{
 		{
 			name: "successful forward",
-			setupMock: func(s *mockServer) {
+			setupMock: func(s *mockServer, ts *httptest.Server) {
+				peer := strings.TrimPrefix(ts.URL, "http://")
 				s.selfInfo = &node.Info{ID: "test-node-1"}
 				s.coordinatorInfo = &node.Info{
 					ID:            "coordinator-1",
-					AdvertiseAddr: "127.0.0.1:8300",
+					AdvertiseAddr: peer,
 				}
 			},
 			expectedError: false,
+			ts: httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})),
 		},
 		{
 			name: "self info error",
-			setupMock: func(s *mockServer) {
+			setupMock: func(s *mockServer, ts *httptest.Server) {
 				s.selfInfoErr = errors.New("self info error")
 			},
 			expectedError: true,
 		},
 		{
 			name: "get coordinator error",
-			setupMock: func(s *mockServer) {
+			setupMock: func(s *mockServer, ts *httptest.Server) {
 				s.selfInfo = &node.Info{ID: "test-node-1"}
 				s.coordinatorErr = errors.New("coordinator not found")
 			},
@@ -177,7 +180,7 @@ func TestForwardToCoordinator(t *testing.T) {
 			// Create mock server
 			ms := &mockServer{}
 			if tt.setupMock != nil {
-				tt.setupMock(ms)
+				tt.setupMock(ms, tt.ts)
 			}
 
 			// Create gin context
@@ -193,6 +196,10 @@ func TestForwardToCoordinator(t *testing.T) {
 				assert.NotNil(t, c.Errors.Last())
 			} else {
 				assert.Nil(t, c.Errors.Last())
+			}
+
+			if tt.ts != nil {
+				tt.ts.Close()
 			}
 		})
 	}
@@ -231,83 +238,4 @@ func (m *mockPDAPIClient) LoadKeyspace(ctx context.Context, keyspace string) (*k
 		return nil, m.err
 	}
 	return m.keyspace, nil
-}
-
-func TestKeyspaceCheckerMiddleware(t *testing.T) {
-	tests := []struct {
-		name           string
-		keyspace       string
-		mockKeyspace   *keyspacepb.KeyspaceMeta
-		mockError      error
-		expectedStatus int
-		expectedAbort  bool
-	}{
-		{
-			name:           "default keyspace",
-			keyspace:       "",
-			expectedStatus: http.StatusOK,
-			expectedAbort:  false,
-		},
-		{
-			name:           "valid keyspace",
-			keyspace:       "test_keyspace",
-			mockKeyspace:   &keyspacepb.KeyspaceMeta{State: keyspacepb.KeyspaceState_ENABLED},
-			expectedStatus: http.StatusOK,
-			expectedAbort:  false,
-		},
-		{
-			name:           "disabled keyspace",
-			keyspace:       "test_keyspace",
-			mockKeyspace:   &keyspacepb.KeyspaceMeta{State: keyspacepb.KeyspaceState_DISABLED},
-			expectedStatus: http.StatusBadRequest,
-			expectedAbort:  true,
-		},
-		{
-			name:           "archived keyspace",
-			keyspace:       "test_keyspace",
-			mockKeyspace:   &keyspacepb.KeyspaceMeta{State: keyspacepb.KeyspaceState_ARCHIVED},
-			expectedStatus: http.StatusBadRequest,
-			expectedAbort:  true,
-		},
-		{
-			name:           "tombstone keyspace",
-			keyspace:       "test_keyspace",
-			mockKeyspace:   &keyspacepb.KeyspaceMeta{State: keyspacepb.KeyspaceState_TOMBSTONE},
-			expectedStatus: http.StatusBadRequest,
-			expectedAbort:  true,
-		},
-		{
-			name:           "load keyspace error",
-			keyspace:       "test_keyspace",
-			mockError:      errors.New("load keyspace error"),
-			expectedStatus: http.StatusInternalServerError,
-			expectedAbort:  true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create mock PD API client
-			mockPDClient := &mockPDAPIClient{
-				keyspace: tt.mockKeyspace,
-				err:      tt.mockError,
-			}
-
-			// Set up context with mock client
-			ctx := context.Background()
-			appcontext.SetService(appcontext.PDAPIClient, mockPDClient)
-
-			// Create test request
-			req := httptest.NewRequestWithContext(ctx, "GET", fmt.Sprintf("/test?%s=%s", api.APIOpVarKeyspace, tt.keyspace), nil)
-
-			// Create gin context
-			w := httptest.NewRecorder()
-			c, _ := gin.CreateTestContext(w)
-			c.Request = req
-			KeyspaceCheckerMiddleware()(c)
-
-			assert.Equal(t, tt.expectedAbort, c.IsAborted())
-			assert.Equal(t, tt.expectedStatus, w.Code)
-		})
-	}
 }

@@ -32,9 +32,11 @@ import (
 	"github.com/pingcap/ticdc/logservice/schemastore"
 	"github.com/pingcap/ticdc/pkg/api"
 	"github.com/pingcap/ticdc/pkg/common"
+	appcontext "github.com/pingcap/ticdc/pkg/common/context"
 	"github.com/pingcap/ticdc/pkg/config"
 	"github.com/pingcap/ticdc/pkg/errors"
 	"github.com/pingcap/ticdc/pkg/filter"
+	"github.com/pingcap/ticdc/pkg/keyspace"
 	"github.com/pingcap/ticdc/pkg/node"
 	"github.com/pingcap/ticdc/pkg/txnutil/gc"
 	"github.com/pingcap/ticdc/pkg/util"
@@ -74,13 +76,13 @@ func (h *OpenAPIV2) CreateChangefeed(c *gin.Context) {
 		return
 	}
 
-	keyspace := GetKeyspaceValueWithDefault(c)
+	keyspaceName := GetKeyspaceValueWithDefault(c)
 
 	var changefeedID common.ChangeFeedID
 	if cfg.ID == "" {
-		changefeedID = common.NewChangefeedID(keyspace)
+		changefeedID = common.NewChangefeedID(keyspaceName)
 	} else {
-		changefeedID = common.NewChangeFeedIDWithName(cfg.ID, keyspace)
+		changefeedID = common.NewChangeFeedIDWithName(cfg.ID, keyspaceName)
 	}
 	// verify changefeedID
 	if err := common.ValidateChangefeedID(changefeedID.Name()); err != nil {
@@ -90,7 +92,7 @@ func (h *OpenAPIV2) CreateChangefeed(c *gin.Context) {
 	}
 
 	// We use the keyspace in the query parameter
-	cfg.Keyspace = keyspace
+	cfg.Keyspace = keyspaceName
 
 	// verify changefeed keyspace
 	if err := common.ValidateKeyspace(changefeedID.Keyspace()); err != nil {
@@ -98,6 +100,8 @@ func (h *OpenAPIV2) CreateChangefeed(c *gin.Context) {
 			"invalid keyspace: %s", cfg.ID))
 		return
 	}
+
+	keyspaceManager := appcontext.GetService[keyspace.KeyspaceManager](appcontext.KeyspaceManager)
 
 	co, err := h.server.GetCoordinator()
 	if err != nil {
@@ -175,7 +179,24 @@ func (h *OpenAPIV2) CreateChangefeed(c *gin.Context) {
 	})
 	protocol, _ := config.ParseSinkProtocolFromString(util.GetOrZero(replicaCfg.Sink.Protocol))
 
-	ineligibleTables, _, err := getVerifiedTables(ctx, replicaCfg, h.server.GetKVStorage(), cfg.StartTs, scheme, topic, protocol)
+	kvStorage, err := keyspaceManager.GetStorage(keyspaceName)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+
+	schemaStore := appcontext.GetService[schemastore.SchemaStore](appcontext.SchemaStore)
+	// The ctx's lifecycle is the same as the HTTP request.
+	// The schema store may use the context to fetch database information asynchronously.
+	// Therefore, we cannot use the context of the HTTP request.
+	// We create a new context here.
+	schemaCxt := context.Background()
+	if err := schemaStore.RegisterKeyspace(schemaCxt, keyspaceName); err != nil {
+		_ = c.Error(err)
+		return
+	}
+
+	ineligibleTables, _, err := getVerifiedTables(ctx, replicaCfg, kvStorage, cfg.StartTs, scheme, topic, protocol)
 	if err != nil {
 		_ = c.Error(err)
 		return
@@ -579,7 +600,9 @@ func (h *OpenAPIV2) ResumeChangefeed(c *gin.Context) {
 func (h *OpenAPIV2) UpdateChangefeed(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	changefeedDisplayName := common.NewChangeFeedDisplayName(c.Param(api.APIOpVarChangefeedID), GetKeyspaceValueWithDefault(c))
+	keyspaceName := GetKeyspaceValueWithDefault(c)
+
+	changefeedDisplayName := common.NewChangeFeedDisplayName(c.Param(api.APIOpVarChangefeedID), keyspaceName)
 	if err := common.ValidateChangefeedID(changefeedDisplayName.Name); err != nil {
 		_ = c.Error(errors.ErrAPIInvalidParam.GenWithStack("invalid changefeed_id: %s",
 			changefeedDisplayName.Name))
@@ -650,8 +673,16 @@ func (h *OpenAPIV2) UpdateChangefeed(c *gin.Context) {
 	})
 	protocol, _ := config.ParseSinkProtocolFromString(util.GetOrZero(oldCfInfo.Config.Sink.Protocol))
 
+	keyspaceManager := appcontext.GetService[keyspace.KeyspaceManager](appcontext.KeyspaceManager)
+
+	kvStorage, err := keyspaceManager.GetStorage(keyspaceName)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+
 	// use checkpointTs get snapshot from kv storage
-	ineligibleTables, _, err := getVerifiedTables(ctx, oldCfInfo.Config, h.server.GetKVStorage(), status.CheckpointTs, scheme, topic, protocol)
+	ineligibleTables, _, err := getVerifiedTables(ctx, oldCfInfo.Config, kvStorage, status.CheckpointTs, scheme, topic, protocol)
 	if err != nil {
 		_ = c.Error(errors.ErrChangefeedUpdateRefused.GenWithStackByCause(err))
 		return

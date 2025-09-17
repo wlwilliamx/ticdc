@@ -29,7 +29,8 @@ import (
 const (
 	// DefaultKeyspace is the default keyspace value,
 	// all the old changefeed will be put into default keyspace
-	DefaultKeyspace = "default"
+	DefaultKeyspace   = "default"
+	DefaultKeyspaceID = 0
 )
 
 var DefaultEndian = binary.LittleEndian

@@ -396,7 +396,7 @@ func (s *EventTestHelper) getLastKeyValue(tableID int64) (key, value []byte) {
 	require.NoError(s.t, err)
 	defer txn.Rollback() //nolint:errcheck
 
-	start, end := common.GetTableRange(tableID)
+	start, end, _ := common.GetKeyspaceTableRange(common.DefaultKeyspaceID, tableID)
 	iter, err := txn.Iter(start, end)
 	require.NoError(s.t, err)
 	defer iter.Close()

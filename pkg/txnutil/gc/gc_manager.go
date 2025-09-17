@@ -41,8 +41,8 @@ type Manager interface {
 	// Set `forceUpdate` to force Manager update.
 	TryUpdateGCSafePoint(ctx context.Context, checkpointTs common.Ts, forceUpdate bool) error
 	CheckStaleCheckpointTs(ctx context.Context, changefeedID common.ChangeFeedID, checkpointTs common.Ts) error
-	// TryUpdateKeypsaceGCBarrier tries to update gc barrier of a keyspace
-	TryUpdateKeypsaceGCBarrier(ctx context.Context, keyspaceID uint32, keyspaceName string, checkpointTs common.Ts, forceUpdate bool) error
+	// TryUpdateKeyspaceGCBarrier tries to update gc barrier of a keyspace
+	TryUpdateKeyspaceGCBarrier(ctx context.Context, keyspaceID uint32, keyspaceName string, checkpointTs common.Ts, forceUpdate bool) error
 }
 
 // keyspaceGCBarrierInfo is the gc info for a keyspace
@@ -165,15 +165,15 @@ func (m *gcManager) CheckStaleCheckpointTs(
 	return nil
 }
 
-func (m *gcManager) TryUpdateKeypsaceGCBarrier(ctx context.Context, keyspaceID uint32, keyspaceName string, checkpointTs common.Ts, forceUpdate bool) error {
+func (m *gcManager) TryUpdateKeyspaceGCBarrier(ctx context.Context, keyspaceID uint32, keyspaceName string, checkpointTs common.Ts, forceUpdate bool) error {
 	var lastUpdatedTime time.Time
-	if lastUpdatedTimeResult, ok := m.keyspaceGCBarrierInfoMap.Load(keyspaceID); ok {
+	if lastUpdatedTimeResult, ok := m.keyspaceLastUpdatedTimeMap.Load(keyspaceID); ok {
 		lastUpdatedTime = lastUpdatedTimeResult.(time.Time)
 	}
 	if time.Since(lastUpdatedTime) < gcSafepointUpdateInterval && !forceUpdate {
 		return nil
 	}
-	m.keyspaceGCBarrierInfoMap.Store(keyspaceID, time.Now())
+	m.keyspaceLastUpdatedTimeMap.Store(keyspaceID, time.Now())
 
 	gcClient := m.pdClient.GetGCStatesClient(keyspaceID)
 	ttl := time.Duration(m.gcTTL) * time.Second
@@ -196,12 +196,6 @@ func (m *gcManager) TryUpdateKeypsaceGCBarrier(ctx context.Context, keyspaceID u
 	failpoint.Inject("InjectActualGCBarrier", func(val failpoint.Value) {
 		actual = uint64(val.(int))
 	})
-
-	log.Debug("update gc barrier",
-		zap.String("gcServiceID", m.gcServiceID),
-		zap.Uint32("keyspaceID", keyspaceID),
-		zap.Uint64("checkpointTs", checkpointTs),
-		zap.Uint64("actual", actual))
 
 	if actual == checkpointTs {
 		log.Info("update gc barrier success", zap.Uint64("gcBarrierTs", checkpointTs))

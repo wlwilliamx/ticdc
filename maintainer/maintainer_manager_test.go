@@ -29,6 +29,7 @@ import (
 	"github.com/pingcap/ticdc/pkg/config"
 	"github.com/pingcap/ticdc/pkg/etcd"
 	"github.com/pingcap/ticdc/pkg/filter"
+	"github.com/pingcap/ticdc/pkg/keyspace"
 	"github.com/pingcap/ticdc/pkg/messaging"
 	"github.com/pingcap/ticdc/pkg/messaging/proto"
 	"github.com/pingcap/ticdc/pkg/node"
@@ -60,6 +61,8 @@ func TestMaintainerSchedulesNodeChanges(t *testing.T) {
 	}
 	mockPDClock := pdutil.NewClock4Test()
 	appcontext.SetService(appcontext.DefaultPDClock, mockPDClock)
+	keyspaceManager := keyspace.NewKeyspaceManager([]string{"127.0.0.1:2379"})
+	appcontext.SetService(appcontext.KeyspaceManager, keyspaceManager)
 
 	appcontext.SetService(appcontext.SchemaStore, store)
 	mc := messaging.NewMessageCenter(ctx, selfNode.ID, config.NewDefaultMessageCenterConfig(selfNode.AdvertiseAddr), nil)
@@ -295,7 +298,7 @@ func TestMaintainerBootstrapWithTablesReported(t *testing.T) {
 	// table1 and table 2 will be reported by remote
 	var remotedIds []common.DispatcherID
 	for i := 1; i < 3; i++ {
-		span := common.TableIDToComparableSpan(int64(i))
+		span := common.TableIDToComparableSpan(common.DefaultKeyspaceID, int64(i))
 		tableSpan := &heartbeatpb.TableSpan{
 			TableID:  int64(i),
 			StartKey: span.StartKey,
@@ -354,7 +357,7 @@ func TestMaintainerBootstrapWithTablesReported(t *testing.T) {
 	foundSize := 0
 	hasDDLDispatcher := false
 	for _, stm := range maintainer.controller.spanController.GetReplicating() {
-		if stm.Span.Equal(common.DDLSpan) {
+		if stm.Span.Equal(common.KeyspaceDDLSpan(common.DefaultKeyspaceID)) {
 			hasDDLDispatcher = true
 		}
 		for _, remotedId := range remotedIds {
@@ -437,7 +440,7 @@ type mockSchemaStore struct {
 	tables []commonEvent.Table
 }
 
-func (m *mockSchemaStore) GetAllPhysicalTables(snapTs common.Ts, filter filter.Filter) ([]commonEvent.Table, error) {
+func (m *mockSchemaStore) GetAllPhysicalTables(keyspaceID uint32, snapTs common.Ts, filter filter.Filter) ([]commonEvent.Table, error) {
 	return m.tables, nil
 }
 

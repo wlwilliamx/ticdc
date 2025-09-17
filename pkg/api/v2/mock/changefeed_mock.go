@@ -203,7 +203,7 @@ func (mr *MockChangefeedInterfaceMockRecorder) Resume(ctx, cfg, keyspace, name i
 }
 
 // SplitTableByRegionCount mocks base method.
-func (m *MockChangefeedInterface) SplitTableByRegionCount(ctx context.Context, keyspace, name string, tableID int64, mode int64) error {
+func (m *MockChangefeedInterface) SplitTableByRegionCount(ctx context.Context, keyspace, name string, tableID, mode int64) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SplitTableByRegionCount", ctx, keyspace, name, tableID, mode)
 	ret0, _ := ret[0].(error)
@@ -211,9 +211,9 @@ func (m *MockChangefeedInterface) SplitTableByRegionCount(ctx context.Context, k
 }
 
 // SplitTableByRegionCount indicates an expected call of SplitTableByRegionCount.
-func (mr *MockChangefeedInterfaceMockRecorder) SplitTableByRegionCount(ctx, keyspace, name, tableID interface{}) *gomock.Call {
+func (mr *MockChangefeedInterfaceMockRecorder) SplitTableByRegionCount(ctx, keyspace, name, tableID, mode interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SplitTableByRegionCount", reflect.TypeOf((*MockChangefeedInterface)(nil).SplitTableByRegionCount), ctx, keyspace, name, tableID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SplitTableByRegionCount", reflect.TypeOf((*MockChangefeedInterface)(nil).SplitTableByRegionCount), ctx, keyspace, name, tableID, mode)
 }
 
 // Update mocks base method.

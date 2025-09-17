@@ -112,7 +112,7 @@ func SetServiceGCSafepoint(
 		retry.WithBackoffBaseDelay(gcServiceBackoffDelay),
 		retry.WithMaxTries(gcServiceMaxRetries),
 		retry.WithIsRetryableErr(errors.IsRetryableError))
-	return
+	return minServiceGCTs, err
 }
 
 // RemoveServiceGCSafepoint removes a service safepoint from PD.
@@ -136,7 +136,7 @@ func SetGCBarrier(ctx context.Context, gcCli gc.GCStatesClient, serviceID string
 	err = retry.Do(ctx, func() error {
 		barrierInfo, err1 := gcCli.SetGCBarrier(ctx, serviceID, ts, ttl)
 		if err1 != nil {
-			log.Warn("Set GC barrier failed, retry later", zap.Error(err1))
+			log.Warn("Set GC barrier failed, retry later", zap.Any("barrierInfo", barrierInfo), zap.Error(err1))
 			return err1
 		}
 		barrierTS = barrierInfo.BarrierTS
@@ -144,5 +144,9 @@ func SetGCBarrier(ctx context.Context, gcCli gc.GCStatesClient, serviceID string
 	}, retry.WithBackoffBaseDelay(gcServiceBackoffDelay),
 		retry.WithMaxTries(gcServiceMaxRetries),
 		retry.WithIsRetryableErr(errors.IsRetryableError))
-	return
+	return barrierTS, err
+}
+
+func GetGCState(ctx context.Context, gcCli gc.GCStatesClient) (gc.GCState, error) {
+	return gcCli.GetGCState(ctx)
 }

@@ -87,7 +87,7 @@ func (e *DispatcherManager) NewRedoTableTriggerEventDispatcher(id *heartbeatpb.D
 	dispatcherID := common.NewDispatcherIDFromPB(id)
 	infos[dispatcherID] = dispatcherCreateInfo{
 		Id:        dispatcherID,
-		TableSpan: common.DDLSpan,
+		TableSpan: common.KeyspaceDDLSpan(e.keyspaceID),
 		StartTs:   startTs,
 		SchemaID:  0,
 	}

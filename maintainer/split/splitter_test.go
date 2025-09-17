@@ -44,7 +44,7 @@ func TestNewSplitter(t *testing.T) {
 		WriteKeyThreshold:  1000,
 	}
 
-	splitter := NewSplitter(cfID, cfg)
+	splitter := NewSplitter(common.DefaultKeyspaceID, cfID, cfg)
 
 	re.NotNil(splitter)
 	re.Equal(cfID, splitter.changefeedID)
@@ -73,7 +73,7 @@ func TestSplitter_Split_ByRegion(t *testing.T) {
 		WriteKeyThreshold:  1000,
 	}
 
-	splitter := NewSplitter(cfID, cfg)
+	splitter := NewSplitter(0, cfID, cfg)
 
 	span := &heartbeatpb.TableSpan{
 		TableID:  1,

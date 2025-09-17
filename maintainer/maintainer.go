@@ -166,15 +166,16 @@ func NewMaintainer(cfID common.ChangeFeedID,
 	taskScheduler threadpool.ThreadPool,
 	checkpointTs uint64,
 	newChangefeed bool,
+	keyspaceID uint32,
 ) *Maintainer {
 	mc := appcontext.GetService[messaging.MessageCenter](appcontext.MessageCenter)
 	nodeManager := appcontext.GetService[*watcher.NodeManager](watcher.NodeManagerName)
 
-	tableTriggerEventDispatcherID, ddlSpan := newDDLSpan(cfID, checkpointTs, selfNode, common.DefaultMode)
+	tableTriggerEventDispatcherID, ddlSpan := newDDLSpan(keyspaceID, cfID, checkpointTs, selfNode, common.DefaultMode)
 	var redoDDLSpan *replica.SpanReplication
 	enableRedo := redo.IsConsistentEnabled(cfg.Config.Consistent.Level)
 	if enableRedo {
-		_, redoDDLSpan = newDDLSpan(cfID, checkpointTs, selfNode, common.RedoMode)
+		_, redoDDLSpan = newDDLSpan(keyspaceID, cfID, checkpointTs, selfNode, common.RedoMode)
 	}
 	m := &Maintainer{
 		id:                cfID,
@@ -182,7 +183,7 @@ func NewMaintainer(cfID common.ChangeFeedID,
 		eventCh:           chann.NewAutoDrainChann[*Event](),
 		startCheckpointTs: checkpointTs,
 		controller: NewController(cfID, checkpointTs, taskScheduler,
-			cfg.Config, ddlSpan, redoDDLSpan, conf.AddTableBatchSize, time.Duration(conf.CheckBalanceInterval), enableRedo),
+			cfg.Config, ddlSpan, redoDDLSpan, conf.AddTableBatchSize, time.Duration(conf.CheckBalanceInterval), keyspaceID, enableRedo),
 		mc:                    mc,
 		removed:               atomic.NewBool(false),
 		nodeManager:           nodeManager,
@@ -254,13 +255,14 @@ func NewMaintainerForRemove(cfID common.ChangeFeedID,
 	conf *config.SchedulerConfig,
 	selfNode *node.Info,
 	taskScheduler threadpool.ThreadPool,
+	keyspaceID uint32,
 ) *Maintainer {
 	unused := &config.ChangeFeedInfo{
 		ChangefeedID: cfID,
 		SinkURI:      "",
 		Config:       config.GetDefaultReplicaConfig(),
 	}
-	m := NewMaintainer(cfID, conf, unused, selfNode, taskScheduler, 1, false)
+	m := NewMaintainer(cfID, conf, unused, selfNode, taskScheduler, 1, false, keyspaceID)
 	m.cascadeRemoving.Store(true)
 	return m
 }
@@ -789,11 +791,11 @@ func isMysqlCompatible(sinkURIStr string) (bool, error) {
 	return config.IsMySQLCompatibleScheme(scheme), nil
 }
 
-func newDDLSpan(cfID common.ChangeFeedID, checkpointTs uint64, selfNode *node.Info, mode int64) (common.DispatcherID, *replica.SpanReplication) {
+func newDDLSpan(keyspaceID uint32, cfID common.ChangeFeedID, checkpointTs uint64, selfNode *node.Info, mode int64) (common.DispatcherID, *replica.SpanReplication) {
 	tableTriggerEventDispatcherID := common.NewDispatcherID()
 	ddlSpan := replica.NewWorkingSpanReplication(cfID, tableTriggerEventDispatcherID,
 		common.DDLSpanSchemaID,
-		common.DDLSpan, &heartbeatpb.TableSpanStatus{
+		common.KeyspaceDDLSpan(keyspaceID), &heartbeatpb.TableSpanStatus{
 			ID:              tableTriggerEventDispatcherID.ToPB(),
 			ComponentStatus: heartbeatpb.ComponentState_Working,
 			CheckpointTs:    checkpointTs,

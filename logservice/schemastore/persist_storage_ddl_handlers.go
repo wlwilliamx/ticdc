@@ -2302,7 +2302,6 @@ func buildDDLEventForRenameTables(rawEvent *PersistedDDLEvent, tableFilter filte
 	allFiltered := true
 	resultQuerys := make([]string, 0)
 	tableInfos := make([]*common.TableInfo, 0)
-	multipleNotSync := make([]bool, 0)
 	if len(querys) != len(rawEvent.MultipleTableInfos) {
 		log.Panic("rename tables length is not equal table infos", zap.Any("querys", querys), zap.Any("tableInfos", rawEvent.MultipleTableInfos))
 	}
@@ -2328,10 +2327,13 @@ func buildDDLEventForRenameTables(rawEvent *PersistedDDLEvent, tableFilter filte
 		if isPartitionTable(rawEvent.TableInfo) {
 			allPhysicalIDs := getAllPartitionIDs(rawEvent.TableInfo)
 			if !ignorePrevTable {
-				resultQuerys = append(resultQuerys, querys[i])
-				tableInfos = append(tableInfos, common.WrapTableInfo(rawEvent.SchemaNames[i], tableInfo))
+				if !notSyncPrevTable {
+					// only when the previous table is not filtered and not NotSync, we add the query and table info
+					// to the DDLEvent. otherwise, we just skip it.
+					resultQuerys = append(resultQuerys, querys[i])
+					tableInfos = append(tableInfos, common.WrapTableInfo(rawEvent.SchemaNames[i], tableInfo))
+				}
 				ddlEvent.BlockedTables.TableIDs = append(ddlEvent.BlockedTables.TableIDs, allPhysicalIDs...)
-				multipleNotSync = append(multipleNotSync, notSyncPrevTable)
 				if !ignoreCurrentTable {
 					// check whether schema change
 					if rawEvent.ExtraSchemaIDs[i] != rawEvent.SchemaIDs[i] {
@@ -2387,10 +2389,13 @@ func buildDDLEventForRenameTables(rawEvent *PersistedDDLEvent, tableFilter filte
 			}
 		} else {
 			if !ignorePrevTable {
-				resultQuerys = append(resultQuerys, querys[i])
-				tableInfos = append(tableInfos, common.WrapTableInfo(rawEvent.SchemaNames[i], tableInfo))
+				if !notSyncPrevTable {
+					// only when the previous table is not filtered and not NotSync, we add the query and table info
+					// to the DDLEvent. otherwise, we just skip it.
+					resultQuerys = append(resultQuerys, querys[i])
+					tableInfos = append(tableInfos, common.WrapTableInfo(rawEvent.SchemaNames[i], tableInfo))
+				}
 				ddlEvent.BlockedTables.TableIDs = append(ddlEvent.BlockedTables.TableIDs, tableInfo.ID)
-				multipleNotSync = append(multipleNotSync, notSyncPrevTable)
 				if !ignoreCurrentTable {
 					if rawEvent.ExtraSchemaIDs[i] != rawEvent.SchemaIDs[i] {
 						ddlEvent.UpdatedSchemas = append(ddlEvent.UpdatedSchemas, commonEvent.SchemaIDChange{
@@ -2446,7 +2451,9 @@ func buildDDLEventForRenameTables(rawEvent *PersistedDDLEvent, tableFilter filte
 	}
 	ddlEvent.Query = strings.Join(resultQuerys, "")
 	ddlEvent.MultipleTableInfos = tableInfos
-	ddlEvent.MultipleNotSync = multipleNotSync
+	// For rename tables, we don't set NotSync, because we have already filter out the querys and multiple table infos which are NotSync.
+	// So here we just set NotSync to false.
+	ddlEvent.NotSync = false
 	return ddlEvent, true, err
 }
 
@@ -2492,7 +2499,6 @@ func buildDDLEventForCreateTables(rawEvent *PersistedDDLEvent, tableFilter filte
 	addName := make([]commonEvent.SchemaTableName, 0, logicalTableCount)
 	resultQuerys := make([]string, 0, logicalTableCount)
 	tableInfos := make([]*common.TableInfo, 0, logicalTableCount)
-	multipleNotSync := make([]bool, 0, logicalTableCount)
 	for i, info := range rawEvent.MultipleTableInfos {
 		filtered, notSync := false, false
 		if tableFilter != nil {
@@ -2528,16 +2534,21 @@ func buildDDLEventForCreateTables(rawEvent *PersistedDDLEvent, tableFilter filte
 			SchemaName: rawEvent.SchemaName,
 			TableName:  info.Name.O,
 		})
-		resultQuerys = append(resultQuerys, querys[i])
-		tableInfos = append(tableInfos, common.WrapTableInfo(rawEvent.SchemaName, info))
-		multipleNotSync = append(multipleNotSync, notSync)
+		if !notSync {
+			// only when the table is not NotSync, we add the query and table info
+			// to the DDLEvent. otherwise, we just skip it.
+			resultQuerys = append(resultQuerys, querys[i])
+			tableInfos = append(tableInfos, common.WrapTableInfo(rawEvent.SchemaName, info))
+		}
 	}
 	ddlEvent.TableNameChange = &commonEvent.TableNameChange{
 		AddName: addName,
 	}
 	ddlEvent.Query = strings.Join(resultQuerys, "")
 	ddlEvent.MultipleTableInfos = tableInfos
-	ddlEvent.MultipleNotSync = multipleNotSync
+	// For create tables, we don't set NotSync, because we have already filter out the querys and multiple table infos which are NotSync.
+	// So here we just set NotSync to false.
+	ddlEvent.NotSync = false
 	if len(ddlEvent.NeedAddedTables) == 0 {
 		log.Fatal("should not happen")
 	}

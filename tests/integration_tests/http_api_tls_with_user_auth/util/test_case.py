@@ -214,14 +214,13 @@ def update_changefeed():
                   headers=headers, cert=CERT, verify=VERIFY)
     assert resp.status_code == rq.codes.bad_request
 
-    # update fail
-    # there is a ineligible table, should return error: CDC:ErrTableIneligible
+    # update success
     url = BASE_URL0+"/changefeeds/changefeed-test2"
     data = json.dumps({"mounter_worker_num": 32})
     headers = {"Content-Type": "application/json"}
     resp = rq.put(url, data=data, auth=Auth,
                   headers=headers, cert=CERT, verify=VERIFY)
-    assert resp.status_code == rq.codes.bad_request
+    assert resp.status_code == rq.codes.ok
 
     # update fail
     # can't update start_ts

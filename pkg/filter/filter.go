@@ -197,7 +197,7 @@ func (f *filter) Verify(tableInfos []*common.TableInfo) error {
 
 func (f *filter) isEligible(tableInfo *common.TableInfo) bool {
 	if tableInfo == nil {
-		// This should happen in test only
+		// This should only happens in test
 		return true
 	}
 	return tableInfo.IsEligible(f.forceReplicate)

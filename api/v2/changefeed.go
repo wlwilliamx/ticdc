@@ -20,7 +20,6 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -29,6 +28,7 @@ import (
 	"github.com/pingcap/ticdc/downstreamadapter/sink"
 	"github.com/pingcap/ticdc/downstreamadapter/sink/columnselector"
 	"github.com/pingcap/ticdc/downstreamadapter/sink/eventrouter"
+	"github.com/pingcap/ticdc/downstreamadapter/sink/helper"
 	"github.com/pingcap/ticdc/logservice/schemastore"
 	"github.com/pingcap/ticdc/pkg/api"
 	"github.com/pingcap/ticdc/pkg/common"
@@ -174,9 +174,14 @@ func (h *OpenAPIV2) CreateChangefeed(c *gin.Context) {
 	}
 
 	scheme := sinkURIParsed.Scheme
-	topic := strings.TrimFunc(sinkURIParsed.Path, func(r rune) bool {
-		return r == '/'
-	})
+	topic := ""
+	if config.IsMQScheme(scheme) {
+		topic, err = helper.GetTopic(sinkURIParsed)
+		if err != nil {
+			_ = c.Error(errors.WrapError(errors.ErrSinkURIInvalid, err))
+			return
+		}
+	}
 	protocol, _ := config.ParseSinkProtocolFromString(util.GetOrZero(replicaCfg.Sink.Protocol))
 
 	kvStorage, err := keyspaceManager.GetStorage(keyspaceName)
@@ -344,9 +349,14 @@ func (h *OpenAPIV2) VerifyTable(c *gin.Context) {
 	}
 
 	scheme := sinkURIParsed.Scheme
-	topic := strings.TrimFunc(sinkURIParsed.Path, func(r rune) bool {
-		return r == '/'
-	})
+	topic := ""
+	if config.IsMQScheme(scheme) {
+		topic, err = helper.GetTopic(sinkURIParsed)
+		if err != nil {
+			_ = c.Error(errors.WrapError(errors.ErrSinkURIInvalid, err))
+			return
+		}
+	}
 	protocol, _ := config.ParseSinkProtocolFromString(util.GetOrZero(replicaCfg.Sink.Protocol))
 
 	keyspaceManager := appcontext.GetService[keyspace.KeyspaceManager](appcontext.KeyspaceManager)
@@ -725,9 +735,14 @@ func (h *OpenAPIV2) UpdateChangefeed(c *gin.Context) {
 	}
 
 	scheme := sinkURIParsed.Scheme
-	topic := strings.TrimFunc(sinkURIParsed.Path, func(r rune) bool {
-		return r == '/'
-	})
+	topic := ""
+	if config.IsMQScheme(scheme) {
+		topic, err = helper.GetTopic(sinkURIParsed)
+		if err != nil {
+			_ = c.Error(errors.WrapError(errors.ErrSinkURIInvalid, err))
+			return
+		}
+	}
 	protocol, _ := config.ParseSinkProtocolFromString(util.GetOrZero(oldCfInfo.Config.Sink.Protocol))
 
 	keyspaceManager := appcontext.GetService[keyspace.KeyspaceManager](appcontext.KeyspaceManager)

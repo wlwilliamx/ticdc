@@ -256,9 +256,8 @@ func getArgsWithGeneratedColumn(row *chunk.Row, tableInfo *common.TableInfo) []i
 func whereSlice(row *chunk.Row, tableInfo *common.TableInfo) ([]string, []interface{}) {
 	args := make([]interface{}, 0, len(tableInfo.GetColumns()))
 	colNames := make([]string, 0, len(tableInfo.GetColumns()))
-	// Try to use unique key values when available
 	for i, col := range tableInfo.GetColumns() {
-		if col == nil || !tableInfo.IsHandleKey(col.ID) {
+		if col == nil {
 			continue
 		}
 		colNames = append(colNames, col.Name.O)

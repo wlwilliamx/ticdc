@@ -276,6 +276,28 @@ func TestBuildDelete(t *testing.T) {
 	require.Equal(t, expectedSQL, sql)
 	require.Len(t, args, 2)
 	require.Equal(t, expectedArgs, args)
+
+	// case 5: delete data from table that has composite nullable uk
+	createTableSQL = "create table t5 (id int, name varchar(32), age int, unique key (age, name));"
+	job = helper.DDL2Job(createTableSQL)
+	require.NotNil(t, job)
+
+	insertDataSQL = "insert into t5 values (1, 'test', 20);"
+	event = helper.DML2Event("test", "t5", insertDataSQL)
+	require.NotNil(t, event)
+	row, ok = event.GetNextRow()
+	require.True(t, ok)
+	require.NotNil(t, row)
+	row.RowType = common.RowTypeDelete
+	row.PreRow = row.Row
+
+	expectedSQL = "DELETE FROM `test`.`t5` WHERE `id` = ? AND `name` = ? AND `age` = ? LIMIT 1"
+	expectedArgs = []interface{}{int64(1), "test", int64(20)}
+
+	sql, args = buildDelete(event.TableInfo, row)
+	require.Equal(t, expectedSQL, sql)
+	require.Len(t, args, 3)
+	require.Equal(t, expectedArgs, args)
 }
 
 func TestBuildUpdate(t *testing.T) {

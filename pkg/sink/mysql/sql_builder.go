@@ -253,13 +253,23 @@ func getArgsWithGeneratedColumn(row *chunk.Row, tableInfo *common.TableInfo) []i
 func whereSlice(row *chunk.Row, tableInfo *common.TableInfo) ([]string, []interface{}) {
 	args := make([]interface{}, 0, len(tableInfo.GetColumns()))
 	colNames := make([]string, 0, len(tableInfo.GetColumns()))
+	// Try to use unique key values when available
 	for i, col := range tableInfo.GetColumns() {
-		if col == nil {
+		if col == nil || !tableInfo.IsHandleKey(col.ID) {
 			continue
 		}
 		colNames = append(colNames, col.Name.O)
 		v := common.ExtractColVal(row, col, i)
 		args = append(args, v)
+	}
+
+	// if no explicit row id, use all key-values in where condition
+	if len(colNames) == 0 {
+		for i, col := range tableInfo.GetColumns() {
+			colNames = append(colNames, col.Name.O)
+			v := common.ExtractColVal(row, col, i)
+			args = append(args, v)
+		}
 	}
 	return colNames, args
 }

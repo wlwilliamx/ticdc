@@ -361,8 +361,10 @@ func (h *OpenAPIV2) VerifyTable(c *gin.Context) {
 		_ = c.Error(err)
 		return
 	}
-	log.Info("verify table", zap.Strings("ineligibleTables", ineligibleTables), zap.Strings("eligibleTables", eligibleTables),
-		zap.Bool("forceReplicate", replicaCfg.ForceReplicate), zap.Bool("ignoreIneligibleTable", cfg.ReplicaConfig.IgnoreIneligibleTable))
+	log.Info("verify table",
+		zap.Bool("forceReplicate", replicaCfg.ForceReplicate),
+		zap.Bool("ignoreIneligibleTable", cfg.ReplicaConfig.IgnoreIneligibleTable),
+	)
 
 	toAPIModelFunc := func(tbls []string) []TableName {
 		var apiModels []TableName
@@ -1327,8 +1329,6 @@ func getVerifiedTables(
 	}
 	log.Info("verifyTables completed",
 		zap.Int("tableCount", len(tableInfos)),
-		zap.Strings("ineligibleTables", ineligibleTables),
-		zap.Strings("eligibleTables", eligibleTables),
 		zap.Uint64("startTs", startTs))
 
 	err = f.Verify(tableInfos)

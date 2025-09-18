@@ -349,7 +349,14 @@ func (h *OpenAPIV2) VerifyTable(c *gin.Context) {
 	})
 	protocol, _ := config.ParseSinkProtocolFromString(util.GetOrZero(replicaCfg.Sink.Protocol))
 
-	ineligibleTables, eligibleTables, err := getVerifiedTables(ctx, replicaCfg, h.server.GetKVStorage(), cfg.StartTs, scheme, topic, protocol)
+	keyspaceManager := appcontext.GetService[keyspace.KeyspaceManager](appcontext.KeyspaceManager)
+	keyspaceName := GetKeyspaceValueWithDefault(c)
+	kvStorage, err := keyspaceManager.GetStorage(keyspaceName)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	ineligibleTables, eligibleTables, err := getVerifiedTables(ctx, replicaCfg, kvStorage, cfg.StartTs, scheme, topic, protocol)
 	if err != nil {
 		_ = c.Error(err)
 		return

@@ -141,6 +141,7 @@ func (f *filter) ShouldIgnoreDML(dmlType common.RowType, preRow, row chunk.Row, 
 // 2. By startTs.
 // 3. By schema name.
 // 4. By table name.
+// 5. By eligibility of the table.
 func (f *filter) ShouldDiscardDDL(schema, table string, ddlType timodel.ActionType, tableInfo *common.TableInfo, startTs uint64) bool {
 	if !isAllowedDDL(ddlType) {
 		return true
@@ -155,19 +156,22 @@ func (f *filter) ShouldDiscardDDL(schema, table string, ddlType timodel.ActionTy
 		return true
 	}
 
-	return f.ShouldIgnoreTable(schema, table, tableInfo)
+	if f.ShouldIgnoreTable(schema, table, tableInfo) {
+		return true
+	}
+
+	if !f.IsEligibleTable(tableInfo) {
+		log.Info("table is not eligible, should discard this ddl", zap.String("schema", tableInfo.GetSchemaName()), zap.String("table", tableInfo.GetTableName()),
+			zap.Bool("forceReplicate", f.forceReplicate), zap.Bool("hasPKOrNotNullUK", tableInfo.HasPKOrNotNullUK))
+		return true
+	}
+	return false
 }
 
 // ShouldIgnoreDDL checks if a DDL event should be ignore by conditions below:
-// 1. By eligibility of the table.
-// 2. By ddl type.
-// 3. By ddl query.
+// 1. By ddl type.
+// 2. By ddl query.
 func (f *filter) ShouldIgnoreDDL(schema, table, query string, ddlType timodel.ActionType, tableInfo *common.TableInfo) (bool, error) {
-	if !f.IsEligibleTable(tableInfo) {
-		log.Info("table is not eligible, should ignore this ddl", zap.String("schema", tableInfo.GetSchemaName()), zap.String("table", tableInfo.GetTableName()),
-			zap.Bool("forceReplicate", f.forceReplicate), zap.Bool("hasPKOrNotNullUK", tableInfo.HasPKOrNotNullUK), zap.String("query", query))
-		return true, nil
-	}
 	return f.sqlEventFilter.shouldSkipDDL(schema, table, query, ddlType)
 }
 

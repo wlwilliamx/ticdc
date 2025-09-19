@@ -65,6 +65,8 @@ type Filter interface {
 	ShouldIgnoreTable(schema, table string, tableInfo *common.TableInfo) bool
 	// ShouldIgnoreSchema returns true if the schema should be ignored.
 	ShouldIgnoreSchema(schema string) bool
+	// IsEligibleTable returns true if the table is eligible to be replicated.
+	IsEligibleTable(tableInfo *common.TableInfo) bool
 	// Verify should only be called by create changefeed OpenAPI.
 	// Its purpose is to verify the expression filter config.
 	Verify(tableInfos []*common.TableInfo) error
@@ -112,15 +114,10 @@ func NewFilter(cfg *config.FilterConfig, tz string, caseSensitive bool, forceRep
 }
 
 // ShouldIgnoreDML checks if a DML event should be ignore by conditions below:
-// 0. By startTs.
-// 1. By eligibility of the table.
+// 1. By startTs.
 // 2. By table name.
 // 3. By type.
 func (f *filter) ShouldIgnoreDML(dmlType common.RowType, preRow, row chunk.Row, tableInfo *common.TableInfo, startTs uint64) (bool, error) {
-	if !f.isEligible(tableInfo) {
-		return true, nil
-	}
-
 	if f.shouldIgnoreStartTs(startTs) {
 		return true, nil
 	}
@@ -140,10 +137,10 @@ func (f *filter) ShouldIgnoreDML(dmlType common.RowType, preRow, row chunk.Row, 
 }
 
 // ShouldDiscardDDL checks if a DDL event should be discarded by conditions below:
-// 0. By allow list.
-// 1. By startTs.
-// 2. By schema name.
-// 3. By table name.
+// 1. By allow list.
+// 2. By startTs.
+// 3. By schema name.
+// 4. By table name.
 func (f *filter) ShouldDiscardDDL(schema, table string, ddlType timodel.ActionType, tableInfo *common.TableInfo, startTs uint64) bool {
 	if !isAllowedDDL(ddlType) {
 		return true
@@ -166,7 +163,7 @@ func (f *filter) ShouldDiscardDDL(schema, table string, ddlType timodel.ActionTy
 // 2. By ddl type.
 // 3. By ddl query.
 func (f *filter) ShouldIgnoreDDL(schema, table, query string, ddlType timodel.ActionType, tableInfo *common.TableInfo) (bool, error) {
-	if !f.isEligible(tableInfo) {
+	if !f.IsEligibleTable(tableInfo) {
 		log.Info("table is not eligible, should ignore this ddl", zap.String("schema", tableInfo.GetSchemaName()), zap.String("table", tableInfo.GetTableName()),
 			zap.Bool("forceReplicate", f.forceReplicate), zap.Bool("hasPKOrNotNullUK", tableInfo.HasPKOrNotNullUK), zap.String("query", query))
 		return true, nil
@@ -195,9 +192,9 @@ func (f *filter) Verify(tableInfos []*common.TableInfo) error {
 	// return f.dmlExprFilter.verify(tableInfos)
 }
 
-func (f *filter) isEligible(tableInfo *common.TableInfo) bool {
+func (f *filter) IsEligibleTable(tableInfo *common.TableInfo) bool {
 	if tableInfo == nil {
-		// This should only happens in test
+		// This should only happen in test
 		return true
 	}
 	return tableInfo.IsEligible(f.forceReplicate)

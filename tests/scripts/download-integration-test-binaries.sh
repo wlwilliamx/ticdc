@@ -124,6 +124,12 @@ download_jq() {
 download_binaries() {
 	log_green "Downloading binaries..."
 
+	# FIXME: Temporarily pin branches to release-8.5 for stable CI, remove this once https://github.com/tikv/tikv/issues/18986 is resolved
+	TIDB_BRANCH="release-8.5"
+	TIKV_BRANCH="release-8.5"
+	PD_BRANCH="release-8.5"
+	TIFLASH_BRANCH="release-8.5"
+
 	# Get sha1 based on branch name
 	local tidb_branch_sha1=$(get_sha1 "tidb" "$TIDB_BRANCH")
 	local tikv_branch_sha1=$(get_sha1 "tikv" "$TIKV_BRANCH")

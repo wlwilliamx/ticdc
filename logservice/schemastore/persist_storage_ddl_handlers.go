@@ -2164,7 +2164,8 @@ func buildDDLEventForExchangeTablePartition(rawEvent *PersistedDDLEvent, tableFi
 			rawEvent.TableName,
 			rawEvent.Query,
 			model.ActionExchangeTablePartition,
-			rawEvent.TableInfo,
+			// rawEvent.ExtraTableInfo is the normal table info before exchange.
+			rawEvent.ExtraTableInfo.ToTiDBTableInfo(),
 			rawEvent.StartTs,
 		)
 		if err != nil {
@@ -2176,6 +2177,11 @@ func buildDDLEventForExchangeTablePartition(rawEvent *PersistedDDLEvent, tableFi
 			rawEvent.ExtraTableName,
 			rawEvent.Query,
 			model.ActionExchangeTablePartition,
+			// rawEvent.TableInfo is the partition table info after exchange,
+			// typically, we should use the table info before exchange to do filtering,
+			// but we don't have the table info before exchange here,
+			// so we use the partition table info after exchange instead,
+			// because the difference between this two table info is just one partition table id changed.
 			rawEvent.TableInfo,
 			rawEvent.StartTs,
 		)

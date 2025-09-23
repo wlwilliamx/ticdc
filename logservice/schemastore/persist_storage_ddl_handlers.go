@@ -655,10 +655,12 @@ func buildPersistedDDLEventForNormalPartitionDDL(args buildPersistedDDLEventFunc
 // the TableInfo belongs to the previous table(pt)
 func buildPersistedDDLEventForExchangePartition(args buildPersistedDDLEventFuncArgs) PersistedDDLEvent {
 	event := buildPersistedDDLEventCommon(args)
+	// these are the info of the normal table before exchange
 	event.TableName = getTableName(args.tableMap, event.TableID)
 	event.SchemaID = getSchemaID(args.tableMap, event.TableID)
 	event.SchemaName = getSchemaName(args.databaseMap, event.SchemaID)
 
+	// these are the info of the partition table after exchange
 	event.ExtraTableID = event.TableInfo.ID
 	event.ExtraTableName = getTableName(args.tableMap, event.ExtraTableID)
 	event.ExtraSchemaID = getSchemaID(args.tableMap, event.ExtraTableID)
@@ -2155,6 +2157,7 @@ func buildDDLEventForExchangeTablePartition(rawEvent *PersistedDDLEvent, tableFi
 	ddlEvent.ExtraSchemaName = rawEvent.ExtraSchemaName
 	ddlEvent.ExtraTableName = rawEvent.ExtraTableName
 	// TODO: rawEvent.TableInfo is not correct for ignoreNormalTable
+	// ignoreNormalTable and ignorePartitionTable are the table info before exchange
 	ignoreNormalTable, ignorePartitionTable := false, false
 	notSyncPartitionTable := false
 	if tableFilter != nil {

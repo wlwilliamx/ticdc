@@ -97,6 +97,14 @@ var (
 			Help:      "The status of changefeeds",
 		}, []string{"namespace", "changefeed"})
 
+	ChangefeedCoordinatorCheckpointTsLagGauge = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "ticdc",
+			Subsystem: "owner",
+			Name:      "coordinator_checkpoint_ts_lag",
+			Help:      "coordinator checkpoint ts lag in changefeeds in seconds",
+		}, []string{"namespace", "changefeed"})
+
 	ChangefeedTickDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: "ticdc",
@@ -107,8 +115,7 @@ var (
 		}, []string{"namespace", "changefeed"})
 )
 
-// InitMetrics registers all metrics used in owner
-func InitChangefeedMetrics(registry *prometheus.Registry) {
+func initChangefeedMetrics(registry *prometheus.Registry) {
 	registry.MustRegister(ChangefeedBarrierTsGauge)
 	registry.MustRegister(ChangefeedCheckpointTsGauge)
 	registry.MustRegister(ChangefeedCheckpointTsLagGauge)
@@ -120,4 +127,5 @@ func InitChangefeedMetrics(registry *prometheus.Registry) {
 	registry.MustRegister(HandleMaintainerRequsetCounter)
 	registry.MustRegister(ChangefeedStatusGauge)
 	registry.MustRegister(ChangefeedTickDuration)
+	registry.MustRegister(ChangefeedCoordinatorCheckpointTsLagGauge)
 }

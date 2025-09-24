@@ -510,15 +510,16 @@ func (ti *TableInfo) IsHandleKey(colID int64) bool {
 
 func (ti *TableInfo) ToTiDBTableInfo() *model.TableInfo {
 	return &model.TableInfo{
-		ID:       ti.TableName.TableID,
-		Name:     ast.NewCIStr(ti.TableName.Table),
-		Charset:  ti.Charset,
-		Collate:  ti.Collate,
-		Comment:  ti.Comment,
-		View:     ti.View,
-		Sequence: ti.Sequence,
-		Columns:  ti.columnSchema.Columns,
-		Indices:  ti.columnSchema.Indices,
+		ID:         ti.TableName.TableID,
+		Name:       ast.NewCIStr(ti.TableName.Table),
+		Charset:    ti.Charset,
+		Collate:    ti.Collate,
+		Comment:    ti.Comment,
+		View:       ti.View,
+		Sequence:   ti.Sequence,
+		Columns:    ti.columnSchema.Columns,
+		Indices:    ti.columnSchema.Indices,
+		PKIsHandle: ti.columnSchema.PKIsHandle,
 	}
 }
 

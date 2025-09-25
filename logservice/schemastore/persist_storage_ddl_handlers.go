@@ -1766,6 +1766,7 @@ func buildDDLEventForNormalDDLOnSingleTable(rawEvent *PersistedDDLEvent, tableFi
 	if err != nil {
 		return commonEvent.DDLEvent{}, false, err
 	}
+	// means it is filtered
 	if !ok {
 		return ddlEvent, false, err
 	}

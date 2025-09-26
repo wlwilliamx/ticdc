@@ -145,8 +145,9 @@ type Maintainer struct {
 
 	checkpointTsGauge    prometheus.Gauge
 	checkpointTsLagGauge prometheus.Gauge
-	resolvedTsGauge      prometheus.Gauge
-	resolvedTsLagGauge   prometheus.Gauge
+
+	resolvedTsGauge    prometheus.Gauge
+	resolvedTsLagGauge prometheus.Gauge
 
 	scheduledTaskGauge  prometheus.Gauge
 	spanCountGauge      prometheus.Gauge
@@ -394,9 +395,9 @@ func (m *Maintainer) cleanupMetrics() {
 	name := m.id.Name()
 	metrics.MaintainerCheckpointTsGauge.DeleteLabelValues(keyspace, name)
 	metrics.MaintainerCheckpointTsLagGauge.DeleteLabelValues(keyspace, name)
+	metrics.MaintainerHandleEventDuration.DeleteLabelValues(keyspace, name)
 	metrics.MaintainerResolvedTsGauge.DeleteLabelValues(keyspace, name)
 	metrics.MaintainerResolvedTsLagGauge.DeleteLabelValues(keyspace, name)
-	metrics.MaintainerHandleEventDuration.DeleteLabelValues(keyspace, name)
 
 	metrics.TableStateGauge.DeleteLabelValues(keyspace, name, "Absent", "default")
 	metrics.TableStateGauge.DeleteLabelValues(keyspace, name, "Absent", "redo")

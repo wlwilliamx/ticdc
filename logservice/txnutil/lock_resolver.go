@@ -18,11 +18,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/pingcap/errors"
 	"github.com/pingcap/kvproto/pkg/kvrpcpb"
 	"github.com/pingcap/log"
 	appcontext "github.com/pingcap/ticdc/pkg/common/context"
-	cerror "github.com/pingcap/ticdc/pkg/errors"
+	"github.com/pingcap/ticdc/pkg/errors"
 	"github.com/pingcap/ticdc/pkg/keyspace"
 	tikverr "github.com/tikv/client-go/v2/error"
 	"github.com/tikv/client-go/v2/tikv"
@@ -73,12 +72,12 @@ func (r *resolver) Resolve(ctx context.Context, keyspaceID uint32, regionID uint
 	keyspaceManager := appcontext.GetService[keyspace.KeyspaceManager](appcontext.KeyspaceManager)
 	keyspaceMeta, err := keyspaceManager.GetKeyspaceByID(ctx, keyspaceID)
 	if err != nil {
-		return cerror.Trace(err)
+		return err
 	}
 
 	storage, err := keyspaceManager.GetStorage(keyspaceMeta.Name)
 	if err != nil {
-		return cerror.Trace(err)
+		return err
 	}
 	kvStorage := storage.(tikv.Storage)
 
@@ -94,7 +93,7 @@ func (r *resolver) Resolve(ctx context.Context, keyspaceID uint32, regionID uint
 		key = loc.StartKey
 		return nil
 	}
-	if err := flushRegion(); err != nil {
+	if err = flushRegion(); err != nil {
 		return errors.Trace(err)
 	}
 	for {

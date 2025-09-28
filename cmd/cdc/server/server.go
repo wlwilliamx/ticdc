@@ -258,17 +258,15 @@ func isNewArchEnabledByConfig(serverConfigFilePath string) bool {
 
 func isOldArchEnabled(o *options) bool {
 	oldArch := os.Getenv("TICDC_NEWARCH") == "false"
-	log.Info("*********** TICDC_NEWARCH", zap.Bool("isFalse", oldArch), zap.String("TICDC_NEWARCH", os.Getenv("TICDC_NEWARCH")))
 	if oldArch {
-		log.Info("Enable oldarch from environment variable")
+		log.Debug("Enable old arch from environment variable")
 		return true
 	}
 
 	serverConfigFilePath := parseConfigFlagFromOSArgs()
 	oldArch = !isNewArchEnabledByConfig(serverConfigFilePath)
-	log.Info("*********** Config file newarch", zap.Bool("isFalse", oldArch))
 	if oldArch {
-		log.Info("Enable oldarch from config file")
+		log.Debug("Enable old arch from config file")
 		return true
 	}
 	return false

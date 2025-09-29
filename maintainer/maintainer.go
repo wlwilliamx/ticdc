@@ -530,8 +530,6 @@ func (m *Maintainer) handleRedoMessage(ctx context.Context) {
 			updateCheckpointTs := true
 
 			newWatermark := heartbeatpb.NewMaxWatermark()
-			minRedoCheckpointTsForScheduler := m.controller.GetMinRedoCheckpointTs()
-			minRedoCheckpointTsForBarrier := m.controller.redoBarrier.GetMinBlockedCheckpointTsForNewTables()
 			// if there is no tables, there must be a table trigger dispatcher
 			for id := range m.bootstrapper.GetAllNodeIDs() {
 				// maintainer node has the table trigger dispatcher
@@ -550,12 +548,10 @@ func (m *Maintainer) handleRedoMessage(ctx context.Context) {
 				newWatermark.UpdateMin(watermark)
 			}
 
-			if minRedoCheckpointTsForScheduler != uint64(math.MaxUint64) {
-				newWatermark.UpdateMin(heartbeatpb.Watermark{CheckpointTs: minRedoCheckpointTsForScheduler, ResolvedTs: minRedoCheckpointTsForScheduler})
-			}
-			if minRedoCheckpointTsForBarrier != uint64(math.MaxUint64) {
-				newWatermark.UpdateMin(heartbeatpb.Watermark{CheckpointTs: minRedoCheckpointTsForBarrier, ResolvedTs: minRedoCheckpointTsForBarrier})
-			}
+			minRedoCheckpointTsForScheduler := m.controller.GetMinRedoCheckpointTs(newWatermark.CheckpointTs)
+			minRedoCheckpointTsForBarrier := m.controller.redoBarrier.GetMinBlockedCheckpointTsForNewTables(newWatermark.CheckpointTs)
+			newWatermark.UpdateMin(heartbeatpb.Watermark{CheckpointTs: minRedoCheckpointTsForScheduler, ResolvedTs: minRedoCheckpointTsForScheduler})
+			newWatermark.UpdateMin(heartbeatpb.Watermark{CheckpointTs: minRedoCheckpointTsForBarrier, ResolvedTs: minRedoCheckpointTsForBarrier})
 
 			if m.redoTs.ResolvedTs < newWatermark.CheckpointTs && updateCheckpointTs {
 				m.redoTs.ResolvedTs = newWatermark.CheckpointTs
@@ -607,12 +603,6 @@ func (m *Maintainer) calCheckpointTs(ctx context.Context) {
 				break
 			}
 
-			// the min checkpointTs is taken from the minimum of three sources: dispatcher reported checkpointTs,
-			// minimum checkpointTs of new tables undergoing DDL, and checkpointTs of tasks in scheduling.
-
-			minCheckpointTsForScheduler := m.controller.GetMinCheckpointTs()
-			minCheckpointTsForBarrier := m.controller.barrier.GetMinBlockedCheckpointTsForNewTables()
-
 			newWatermark := heartbeatpb.NewMaxWatermark()
 			// if there is no tables, there must be a table trigger dispatcher
 			for id := range m.bootstrapper.GetAllNodeIDs() {
@@ -638,12 +628,12 @@ func (m *Maintainer) calCheckpointTs(ctx context.Context) {
 				break
 			}
 
-			if minCheckpointTsForBarrier != uint64(math.MaxUint64) {
-				newWatermark.UpdateMin(heartbeatpb.Watermark{CheckpointTs: minCheckpointTsForBarrier, ResolvedTs: minCheckpointTsForBarrier})
-			}
-			if minCheckpointTsForScheduler != uint64(math.MaxUint64) {
-				newWatermark.UpdateMin(heartbeatpb.Watermark{CheckpointTs: minCheckpointTsForScheduler, ResolvedTs: minCheckpointTsForScheduler})
-			}
+			// the min checkpointTs is taken from the minimum of three sources: dispatcher reported checkpointTs,
+			// minimum checkpointTs of new tables undergoing DDL, and checkpointTs of tasks in scheduling.
+			minCheckpointTsForScheduler := m.controller.GetMinCheckpointTs(newWatermark.CheckpointTs)
+			minCheckpointTsForBarrier := m.controller.barrier.GetMinBlockedCheckpointTsForNewTables(newWatermark.CheckpointTs)
+			newWatermark.UpdateMin(heartbeatpb.Watermark{CheckpointTs: minCheckpointTsForBarrier, ResolvedTs: minCheckpointTsForBarrier})
+			newWatermark.UpdateMin(heartbeatpb.Watermark{CheckpointTs: minCheckpointTsForScheduler, ResolvedTs: minCheckpointTsForScheduler})
 
 			log.Debug("can advance checkpointTs",
 				zap.String("changefeed", m.id.Name()),
@@ -694,13 +684,13 @@ func (m *Maintainer) onHeartBeatRequest(msg *messaging.TargetMessage) {
 	m.controller.HandleStatus(msg.From, req.Statuses)
 	if req.Watermark != nil {
 		old, ok := m.checkpointTsByCapture.Get(msg.From)
-		if !ok || req.Watermark.Seq >= old.Seq {
+		if !ok || (req.Watermark.Seq >= old.Seq && req.Watermark.CheckpointTs >= old.CheckpointTs) {
 			m.checkpointTsByCapture.Set(msg.From, *req.Watermark)
 		}
 	}
 	if req.RedoWatermark != nil {
 		old, ok := m.redoTsByCapture.Get(msg.From)
-		if !ok || req.RedoWatermark.Seq >= old.Seq {
+		if !ok || (req.RedoWatermark.Seq >= old.Seq && req.RedoWatermark.CheckpointTs >= old.CheckpointTs) {
 			m.redoTsByCapture.Set(msg.From, *req.RedoWatermark)
 		}
 	}

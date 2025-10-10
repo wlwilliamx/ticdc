@@ -42,15 +42,20 @@ const (
 func EnsureChangefeedStartTsSafety(
 	ctx context.Context, pdCli pd.Client,
 	gcServiceIDPrefix string,
+	keyspaceID uint32,
 	changefeedID common.ChangeFeedID,
 	TTL int64, startTs uint64,
 ) error {
 	gcServiceID := gcServiceIDPrefix + changefeedID.Keyspace() + "_" + changefeedID.Name()
+	if kerneltype.IsClassic() {
+		return ensureChangefeedStartTsSafetyClassic(ctx, pdCli, gcServiceID, TTL, startTs)
+	}
+	return ensureChangefeedStartTsSafetyNextGen(ctx, pdCli, gcServiceID, keyspaceID, TTL, startTs)
+}
+
+func ensureChangefeedStartTsSafetyClassic(ctx context.Context, pdCli pd.Client, gcServiceID string, ttl int64, startTs uint64) error {
 	// set gc safepoint for the changefeed gc service
-	minServiceGCTs, err := SetServiceGCSafepoint(
-		ctx, pdCli,
-		gcServiceID,
-		TTL, startTs)
+	minServiceGCTs, err := SetServiceGCSafepoint(ctx, pdCli, gcServiceID, ttl, startTs)
 	if err != nil {
 		return errors.Trace(err)
 	}
@@ -58,13 +63,22 @@ func EnsureChangefeedStartTsSafety(
 		zap.String("gcServiceID", gcServiceID),
 		zap.Uint64("expectedGCSafepoint", startTs),
 		zap.Uint64("actualGCSafepoint", minServiceGCTs),
-		zap.Int64("ttl", TTL))
+		zap.Int64("ttl", ttl))
 
 	// startTs should be greater than or equal to minServiceGCTs + 1, otherwise gcManager
 	// would return a ErrSnapshotLostByGC even though the changefeed would appear to be successfully
 	// created/resumed. See issue #6350 for more detail.
 	if startTs > 0 && startTs < minServiceGCTs+1 {
 		return errors.ErrStartTsBeforeGC.GenWithStackByArgs(startTs, minServiceGCTs)
+	}
+	return nil
+}
+
+func ensureChangefeedStartTsSafetyNextGen(ctx context.Context, pdCli pd.Client, gcServiceID string, keyspaceID uint32, ttl int64, startTs uint64) error {
+	gcCli := pdCli.GetGCStatesClient(keyspaceID)
+	_, err := SetGCBarrier(ctx, gcCli, gcServiceID, startTs, time.Duration(ttl)*time.Second)
+	if err != nil {
+		return errors.ErrStartTsBeforeGC.GenWithStackByArgs(startTs)
 	}
 	return nil
 }
@@ -114,8 +128,23 @@ func SetServiceGCSafepoint(
 	return minServiceGCTs, err
 }
 
-// RemoveServiceGCSafepoint removes a service safepoint from PD.
-func RemoveServiceGCSafepoint(ctx context.Context, pdCli pd.Client, serviceID string) error {
+// UnifyGetServiceGCSafepoint returns a service gc safepoint on classic mode or
+// a gc barrier on next-gen mode
+func UnifyGetServiceGCSafepoint(ctx context.Context, pdCli pd.Client, keyspaceID uint32, serviceID string) (uint64, error) {
+	if kerneltype.IsClassic() {
+		return SetServiceGCSafepoint(ctx, pdCli, serviceID, 0, 0)
+	}
+
+	gcCli := pdCli.GetGCStatesClient(keyspaceID)
+	gcState, err := getGCState(ctx, gcCli)
+	if err != nil {
+		return 0, err
+	}
+	return gcState.TxnSafePoint, nil
+}
+
+// removeServiceGCSafepoint removes a service safepoint from PD.
+func removeServiceGCSafepoint(ctx context.Context, pdCli pd.Client, serviceID string) error {
 	// Set TTL to 0 second to delete the service safe point.
 	TTL := 0
 	return retry.Do(ctx,
@@ -131,6 +160,7 @@ func RemoveServiceGCSafepoint(ctx context.Context, pdCli pd.Client, serviceID st
 		retry.WithIsRetryableErr(errors.IsRetryableError))
 }
 
+// SetGCBarrier Set a GC Barrier of a keyspace
 func SetGCBarrier(ctx context.Context, gcCli gc.GCStatesClient, serviceID string, ts uint64, ttl time.Duration) (barrierTS uint64, err error) {
 	err = retry.Do(ctx, func() error {
 		barrierInfo, err1 := gcCli.SetGCBarrier(ctx, serviceID, ts, ttl)
@@ -146,7 +176,7 @@ func SetGCBarrier(ctx context.Context, gcCli gc.GCStatesClient, serviceID string
 	return barrierTS, err
 }
 
-func GetGCState(ctx context.Context, gcCli gc.GCStatesClient) (gc.GCState, error) {
+func getGCState(ctx context.Context, gcCli gc.GCStatesClient) (gc.GCState, error) {
 	return gcCli.GetGCState(ctx)
 }
 
@@ -166,11 +196,11 @@ func DeleteGCBarrier(ctx context.Context, gcCli gc.GCStatesClient, serviceID str
 	return barrierInfo, err
 }
 
-// UnifyDeleteGcSafepoint delete a gc safepoint on classic mode or delte a gc
+// UnifyDeleteGcSafepoint delete a gc safepoint on classic mode or delete a gc
 // barrier on next-gen mode
 func UnifyDeleteGcSafepoint(ctx context.Context, pdCli pd.Client, keyspaceID uint32, serviceID string) error {
 	if kerneltype.IsClassic() {
-		return RemoveServiceGCSafepoint(ctx, pdCli, serviceID)
+		return removeServiceGCSafepoint(ctx, pdCli, serviceID)
 	}
 
 	gcClient := pdCli.GetGCStatesClient(keyspaceID)

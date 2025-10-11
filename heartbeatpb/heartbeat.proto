@@ -296,3 +296,12 @@ message ChangefeedID {
     string name = 3;
     string keyspace = 4;
 }
+
+message ChangefeedPullerResolvedTsEntry {
+    ChangefeedID changefeedID = 1;
+    uint64 resolvedTs = 2;
+}
+
+message AllChangefeedPullerResolvedTs {
+    repeated ChangefeedPullerResolvedTsEntry entries = 1;
+}

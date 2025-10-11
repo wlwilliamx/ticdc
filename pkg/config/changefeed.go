@@ -684,7 +684,8 @@ type ChangeFeedStatus struct {
 	// LastSyncedTs is the last synced max timestamp of the changefeed.
 	// It is used to indicate the progress of the changefeed.
 	// It is not stored in etcd.
-	LastSyncedTs uint64 `json:"-"`
+	LastSyncedTs     uint64 `json:"-"`
+	PullerResolvedTs uint64 `json:"-"`
 }
 
 // Marshal returns json encoded string of ChangeFeedStatus, only contains necessary fields stored in storage

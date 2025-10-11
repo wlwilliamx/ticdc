@@ -43,6 +43,7 @@ type Changefeed struct {
 	configBytes []byte
 	// it's saved to the backend db
 	lastSavedCheckpointTs *atomic.Uint64
+	pullerResolvedTs      *atomic.Uint64
 	// the heartbeatpb.MaintainerStatus is read only
 	status *atomic.Pointer[heartbeatpb.MaintainerStatus]
 
@@ -158,6 +159,14 @@ func (c *Changefeed) UpdateStatus(newStatus *heartbeatpb.MaintainerStatus) (bool
 	}
 
 	return false, config.StateNormal, nil
+}
+
+func (c *Changefeed) GetPullerResolvedTs() uint64 {
+	return c.pullerResolvedTs.Load()
+}
+
+func (c *Changefeed) SetPullerResolvedTs(pullerResolvedTs uint64) {
+	c.pullerResolvedTs.Store(pullerResolvedTs)
 }
 
 func (c *Changefeed) ForceUpdateStatus(newStatus *heartbeatpb.MaintainerStatus) (bool, config.FeedState, *heartbeatpb.RunningError) {

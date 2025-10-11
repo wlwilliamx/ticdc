@@ -1405,7 +1405,7 @@ func (h *OpenAPIV2) synced(c *gin.Context) {
 	}
 
 	// If physcialNow - lastSyncedTs > SyncedCheckInterval && physcialNow - CheckpointTs > CheckpointInterval
-	//         we should consider the situation that pd or tikv region is not healthy to block the advancing resolveTs.
+	//         we should consider the situation that pd or tikv region is not healthy and blocked the advancing resolveTs.
 	//         if pullerResolvedTs - checkpointTs > CheckpointInterval-->  data is not synced
 	//         otherwise, if pd & tikv is healthy --> data is not synced
 	//                    if not healthy --> data is synced

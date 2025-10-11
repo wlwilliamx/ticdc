@@ -72,6 +72,7 @@ func NewChangefeed(cfID common.ChangeFeedID,
 		info:                  atomic.NewPointer(info),
 		configBytes:           bytes,
 		lastSavedCheckpointTs: atomic.NewUint64(checkpointTs),
+		pullerResolvedTs:      atomic.NewUint64(0),
 		sinkType:              getSinkType(uri.Scheme),
 		isNew:                 isNew,
 		// Initialize the status

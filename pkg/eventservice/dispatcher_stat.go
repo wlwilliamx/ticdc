@@ -31,7 +31,7 @@ import (
 const (
 	// If the dispatcher doesn't send heartbeat to the event service for a long time,
 	// we consider it is in-active and remove it.
-	heartbeatTimeout = time.Second * 180
+	heartbeatTimeout = time.Second * 3600
 
 	minScanLimitInBytes     = 1024 * 128  // 128KB
 	maxScanLimitInBytes     = 1024 * 1024 // 1MB
@@ -57,10 +57,14 @@ type dispatcherStat struct {
 	// The epoch of the dispatcher.
 	// It should not be changed after the dispatcher is created.
 	epoch uint64
+
 	// The seq of the events that have been sent to the downstream dispatcher.
 	// It starts from 1, and increase by 1 for each event.
 	// If the dispatcher is reset, the seq should be set to 1.
 	seq atomic.Uint64
+	// This lock should only be used to protect the seq when setting handshake.
+	handshakeLock sync.Mutex
+
 	// syncpoint related
 	enableSyncPoint   bool
 	nextSyncPoint     atomic.Uint64
@@ -191,8 +195,8 @@ func (a *dispatcherStat) isHandshaked() bool {
 	return a.seq.Load() > 0
 }
 
-func (a *dispatcherStat) setHandshaked() bool {
-	return a.seq.CompareAndSwap(0, 1)
+func (a *dispatcherStat) setHandshaked() {
+	a.seq.Store(1)
 }
 
 func (a *dispatcherStat) updateSentResolvedTs(resolvedTs uint64) {

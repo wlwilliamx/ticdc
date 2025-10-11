@@ -15,7 +15,6 @@ package operator
 
 import (
 	"container/heap"
-	"math"
 	"sync"
 	"time"
 
@@ -201,8 +200,7 @@ func (oc *Controller) OperatorSize() int {
 	return len(oc.operators)
 }
 
-func (oc *Controller) GetMinCheckpointTs() uint64 {
-	minCheckpointTs := uint64(math.MaxUint64)
+func (oc *Controller) GetMinCheckpointTs(minCheckpointTs uint64) uint64 {
 	ops := oc.GetAllOperators()
 
 	for _, op := range ops {
@@ -254,7 +252,7 @@ func (oc *Controller) pollQueueingOperator() (
 		log.Info("operator finished",
 			zap.String("role", oc.role),
 			zap.String("changefeed", oc.changefeedID.Name()),
-			zap.String("operator", opID.String()),
+			zap.String("operatorID", opID.String()),
 			zap.String("operator", op.String()))
 		return nil, true
 	}
@@ -308,8 +306,9 @@ func (oc *Controller) removeReplicaSet(op *removeDispatcherOperator) {
 		delete(oc.operators, op.ID())
 		delete(oc.lastWarnTime, op.ID())
 		oc.mu.Unlock()
+	} else {
+		oc.mu.Unlock()
 	}
-	oc.mu.Unlock()
 	oc.pushOperator(op)
 }
 

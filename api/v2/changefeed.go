@@ -104,6 +104,11 @@ func (h *OpenAPIV2) CreateChangefeed(c *gin.Context) {
 	}
 
 	keyspaceManager := appcontext.GetService[keyspace.KeyspaceManager](appcontext.KeyspaceManager)
+	keyspaceMeta, err := keyspaceManager.LoadKeyspace(ctx, keyspaceName)
+	if err != nil {
+		_ = c.Error(errors.WrapError(errors.ErrKeyspaceNotFound, err))
+		return
+	}
 
 	co, err := h.server.GetCoordinator()
 	if err != nil {
@@ -149,6 +154,7 @@ func (h *OpenAPIV2) CreateChangefeed(c *gin.Context) {
 		ctx,
 		h.server.GetPdClient(),
 		createGcServiceID,
+		keyspaceMeta.Id,
 		changefeedID,
 		ensureTTL, cfg.StartTs); err != nil {
 		if !errors.ErrStartTsBeforeGC.Equal(err) {
@@ -247,9 +253,11 @@ func (h *OpenAPIV2) CreateChangefeed(c *gin.Context) {
 		if !needRemoveGCSafePoint {
 			return
 		}
+
 		err = gc.UndoEnsureChangefeedStartTsSafety(
 			ctx,
 			pdClient,
+			keyspaceMeta.Id,
 			createGcServiceID,
 			changefeedID,
 		)
@@ -605,7 +613,8 @@ func (h *OpenAPIV2) PauseChangefeed(c *gin.Context) {
 // @Router	/api/v2/changefeeds/{changefeed_id}/resume [post]
 func (h *OpenAPIV2) ResumeChangefeed(c *gin.Context) {
 	ctx := c.Request.Context()
-	changefeedDisplayName := common.NewChangeFeedDisplayName(c.Param(api.APIOpVarChangefeedID), GetKeyspaceValueWithDefault(c))
+	keyspaceName := GetKeyspaceValueWithDefault(c)
+	changefeedDisplayName := common.NewChangeFeedDisplayName(c.Param(api.APIOpVarChangefeedID), keyspaceName)
 	if err := common.ValidateChangefeedID(changefeedDisplayName.Name); err != nil {
 		_ = c.Error(errors.ErrAPIInvalidParam.GenWithStack("invalid changefeed_id: %s",
 			changefeedDisplayName.Name))
@@ -654,24 +663,35 @@ func (h *OpenAPIV2) ResumeChangefeed(c *gin.Context) {
 		newCheckpointTs = cfg.OverwriteCheckpointTs
 	}
 
+	keyspaceManager := appcontext.GetService[keyspace.KeyspaceManager](appcontext.KeyspaceManager)
+	keyspaceMeta, err := keyspaceManager.LoadKeyspace(ctx, keyspaceName)
+	if err != nil {
+		_ = c.Error(errors.WrapError(errors.ErrKeyspaceNotFound, err))
+		return
+	}
+
 	resumeGcServiceID := h.server.GetEtcdClient().GetEnsureGCServiceID(gc.EnsureGCServiceResuming)
 	if err := verifyResumeChangefeedConfig(
 		ctx,
 		h.server.GetPdClient(),
 		resumeGcServiceID,
+		keyspaceMeta.Id,
 		cfInfo.ChangefeedID,
 		newCheckpointTs); err != nil {
 		_ = c.Error(err)
 		return
 	}
+
 	needRemoveGCSafePoint := false
 	defer func() {
 		if !needRemoveGCSafePoint {
 			return
 		}
-		err := gc.UndoEnsureChangefeedStartTsSafety(
+
+		err = gc.UndoEnsureChangefeedStartTsSafety(
 			ctx,
 			h.server.GetPdClient(),
+			keyspaceMeta.Id,
 			resumeGcServiceID,
 			cfInfo.ChangefeedID,
 		)
@@ -845,6 +865,7 @@ func verifyResumeChangefeedConfig(
 	ctx context.Context,
 	pdClient pd.Client,
 	gcServiceID string,
+	keyspaceID uint32,
 	changefeedID common.ChangeFeedID,
 	overrideCheckpointTs uint64,
 ) error {
@@ -868,6 +889,7 @@ func verifyResumeChangefeedConfig(
 		ctx,
 		pdClient,
 		gcServiceID,
+		keyspaceID,
 		changefeedID,
 		gcTTL, overrideCheckpointTs)
 	if err != nil {
@@ -906,7 +928,7 @@ func (h *OpenAPIV2) MoveTable(c *gin.Context) {
 	}
 
 	// get changefeedID first
-	cfInfo, err := getChangeFeed(c.Request.Host, changefeedDisplayName.Name)
+	cfInfo, err := getChangeFeed(c.Request.Host, changefeedDisplayName.Keyspace, changefeedDisplayName.Name)
 	if err != nil {
 		_ = c.Error(err)
 		return
@@ -981,7 +1003,7 @@ func (h *OpenAPIV2) MoveSplitTable(c *gin.Context) {
 	}
 
 	// get changefeedID first
-	cfInfo, err := getChangeFeed(c.Request.Host, changefeedDisplayName.Name)
+	cfInfo, err := getChangeFeed(c.Request.Host, changefeedDisplayName.Keyspace, changefeedDisplayName.Name)
 	if err != nil {
 		_ = c.Error(err)
 		return
@@ -1055,7 +1077,7 @@ func (h *OpenAPIV2) SplitTableByRegionCount(c *gin.Context) {
 	}
 
 	// get changefeedID first
-	cfInfo, err := getChangeFeed(c.Request.Host, changefeedDisplayName.Name)
+	cfInfo, err := getChangeFeed(c.Request.Host, changefeedDisplayName.Keyspace, changefeedDisplayName.Name)
 	if err != nil {
 		_ = c.Error(err)
 		return
@@ -1126,7 +1148,7 @@ func (h *OpenAPIV2) MergeTable(c *gin.Context) {
 	}
 
 	// get changefeedID first
-	cfInfo, err := getChangeFeed(c.Request.Host, changefeedDisplayName.Name)
+	cfInfo, err := getChangeFeed(c.Request.Host, changefeedDisplayName.Keyspace, changefeedDisplayName.Name)
 	if err != nil {
 		_ = c.Error(err)
 		return
@@ -1187,7 +1209,7 @@ func (h *OpenAPIV2) ListTables(c *gin.Context) {
 	}
 
 	// get changefeedID first
-	cfInfo, err := getChangeFeed(c.Request.Host, changefeedDisplayName.Name)
+	cfInfo, err := getChangeFeed(c.Request.Host, changefeedDisplayName.Keyspace, changefeedDisplayName.Name)
 	if err != nil {
 		_ = c.Error(err)
 		return
@@ -1257,7 +1279,7 @@ func (h *OpenAPIV2) getDispatcherCount(c *gin.Context) {
 		return
 	}
 
-	cfInfo, err := getChangeFeed(c.Request.Host, changefeedDisplayName.Name)
+	cfInfo, err := getChangeFeed(c.Request.Host, changefeedDisplayName.Keyspace, changefeedDisplayName.Name)
 	if err != nil {
 		_ = c.Error(err)
 		return

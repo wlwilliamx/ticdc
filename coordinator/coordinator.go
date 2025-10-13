@@ -429,6 +429,10 @@ func (c *coordinator) Stop() {
 	}
 }
 
+func (c *coordinator) GetLogCoordinatorResolvedTs() {
+	// c.controller.GetLogCoordinatorResolvedTs()
+}
+
 func (c *coordinator) sendMessages(msgs []*messaging.TargetMessage) {
 	for _, msg := range msgs {
 		err := c.mc.SendCommand(msg)

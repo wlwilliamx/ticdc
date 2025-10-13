@@ -297,11 +297,11 @@ message ChangefeedID {
     string keyspace = 4;
 }
 
-message ChangefeedPullerResolvedTsEntry {
+message ChangefeedLogCoordinatorResolvedTsEntry {
     ChangefeedID changefeedID = 1;
     uint64 resolvedTs = 2;
 }
 
-message AllChangefeedPullerResolvedTs {
-    repeated ChangefeedPullerResolvedTsEntry entries = 1;
+message AllChangefeedLogCoordinatorResolvedTs {
+    repeated ChangefeedLogCoordinatorResolvedTsEntry entries = 1;
 }

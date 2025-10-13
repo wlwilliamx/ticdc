@@ -360,14 +360,25 @@ func (db *ChangefeedDB) ReplaceStoppedChangefeed(cf *config.ChangeFeedInfo) {
 	db.changefeeds[cf.ChangefeedID] = newCf
 }
 
-func (db *ChangefeedDB) UpdatePullerResolvedTs(entries []*heartbeatpb.ChangefeedPullerResolvedTsEntry) {
+func (db *ChangefeedDB) UpdateLogCoordinatorResolvedTs(entries []*heartbeatpb.ChangefeedLogCoordinatorResolvedTsEntry) {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
 	for _, entry := range entries {
 		cf := db.changefeeds[common.NewChangefeedIDFromPB(entry.ChangefeedID)]
 		if cf != nil {
-			cf.SetPullerResolvedTs(entry.ResolvedTs)
+			cf.SetLogCoordinatorResolvedTs(entry.ResolvedTs)
 		}
 	}
+}
+
+func (db *ChangefeedDB) GetLogCoordinatorResolvedTsByName(name common.ChangeFeedDisplayName) uint64 {
+	db.lock.RLock()
+	defer db.lock.RUnlock()
+
+	cf := db.changefeeds[db.changefeedDisplayNames[name]]
+	if cf != nil {
+		return cf.GetLogCoordinatorResolvedTs()
+	}
+	return 0
 }

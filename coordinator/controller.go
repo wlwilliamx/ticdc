@@ -254,7 +254,7 @@ func (c *Controller) onMessage(msg *messaging.TargetMessage) {
 			req := msg.Message[0].(*heartbeatpb.MaintainerHeartbeat)
 			c.handleMaintainerStatus(msg.From, req.Statuses)
 		}
-	case messaging.TypeLogCoordinatorReportResolvedTs:
+	case messaging.TypeLogCoordinatorResolvedTsResponse:
 		c.onLogCoordinatorReportResolvedTs(msg)
 	default:
 		log.Panic("unexpected message type",
@@ -263,9 +263,44 @@ func (c *Controller) onMessage(msg *messaging.TargetMessage) {
 }
 
 func (c *Controller) onLogCoordinatorReportResolvedTs(msg *messaging.TargetMessage) {
-	log.Info("received log coordinator report resolved ts",
-		zap.Stringer("node", msg.From))
-	c.changefeedDB.UpdatePullerResolvedTs(msg.Message[0].(*heartbeatpb.AllChangefeedPullerResolvedTs).Entries)
+	c.changefeedDB.UpdateLogCoordinatorResolvedTs(msg.Message[0].(*heartbeatpb.AllChangefeedLogCoordinatorResolvedTs).Entries)
+}
+
+func (c *Controller) RequestResolvedTsFromLogCoordinator(ctx context.Context, changefeedDisplayName common.ChangeFeedDisplayName) {
+	// get the old resolved ts
+	oldTs := c.changefeedDB.GetLogCoordinatorResolvedTsByName(changefeedDisplayName)
+
+	// request all log coordinators to report resolved ts
+	ids := c.nodeManager.GetAliveNodeIDs()
+	for _, id := range ids {
+		c.messageCenter.SendEvent(messaging.NewSingleTargetMessage(id, messaging.LogCoordinatorTopic, &common.LogCoordinatorResolvedTsRequest{}))
+	}
+
+	// wait for some time to get the resolved ts
+	waitTimer := time.NewTimer(2 * time.Second)
+	defer waitTimer.Stop()
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-waitTimer.C:
+			log.Warn("timeout waiting for log coordinator resolved ts",
+				zap.String("changefeed", changefeedDisplayName.String()),
+				zap.Uint64("oldTs", oldTs))
+			return
+		case <-ticker.C:
+			newTs := c.changefeedDB.GetLogCoordinatorResolvedTsByName(changefeedDisplayName)
+			if newTs != oldTs {
+				log.Debug("received log coordinator resolved ts",
+					zap.String("changefeed", changefeedDisplayName.String()),
+					zap.Uint64("oldTs", oldTs),
+					zap.Uint64("newTs", newTs))
+				return
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func (c *Controller) onNodeChanged() {
@@ -720,7 +755,7 @@ func (c *Controller) GetChangefeed(
 	if nodeInfo != nil {
 		maintainerAddr = nodeInfo.AdvertiseAddr
 	}
-	status := &config.ChangeFeedStatus{CheckpointTs: cf.GetStatus().CheckpointTs, LastSyncedTs: cf.GetStatus().LastSyncedTs, PullerResolvedTs: cf.GetPullerResolvedTs()}
+	status := &config.ChangeFeedStatus{CheckpointTs: cf.GetStatus().CheckpointTs, LastSyncedTs: cf.GetStatus().LastSyncedTs, LogCoordinatorResolvedTs: cf.GetLogCoordinatorResolvedTs()}
 	status.SetMaintainerAddr(maintainerAddr)
 	return cf.GetInfo(), status, nil
 }

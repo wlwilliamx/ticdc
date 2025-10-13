@@ -56,9 +56,9 @@ type changefeedState struct {
 	cfID       common.ChangeFeedID
 	nodeStates map[node.ID]uint64
 
-	minPullerResolvedTs uint64
-	resolvedTsGauge     prometheus.Gauge
-	resolvedTsLagGauge  prometheus.Gauge
+	minLogCoordinatorResolvedTs uint64
+	resolvedTsGauge             prometheus.Gauge
+	resolvedTsLagGauge          prometheus.Gauge
 }
 
 type logCoordinator struct {
@@ -121,29 +121,9 @@ func (c *logCoordinator) Run(ctx context.Context) error {
 			// send broadcast message to all nodes
 			c.nodes.Lock()
 			messages := make([]*messaging.TargetMessage, 0, 2*len(c.nodes.m))
-			phyResolvedTs := c.getAllPullerPhyResolvedTs()
-			entries := make([]*heartbeatpb.ChangefeedPullerResolvedTsEntry, 0, len(phyResolvedTs))
-			if len(phyResolvedTs) > 0 {
-				for cfID, ts := range phyResolvedTs {
-					entries = append(entries, &heartbeatpb.ChangefeedPullerResolvedTsEntry{
-						ChangefeedID: cfID.ToPB(),
-						ResolvedTs:   ts,
-					})
-				}
-			}
 			for id := range c.nodes.m {
 				messages = append(messages, messaging.NewSingleTargetMessage(id, eventStoreTopic, &common.LogCoordinatorBroadcastRequest{}))
 				messages = append(messages, messaging.NewSingleTargetMessage(id, logCoordinatorClientTopic, &common.LogCoordinatorBroadcastRequest{}))
-				// We don't know which id is coordinator, so we broadcast to all nodes.
-				// If we try to find the coordinator node, we need to maintain a etcd client in log coordinator,
-				// and get the coordinator info from etcd every broadcastTick.
-				if len(entries) != 0 {
-					messages = append(messages, messaging.NewSingleTargetMessage(
-						id,
-						messaging.CoordinatorTopic,
-						&heartbeatpb.AllChangefeedPullerResolvedTs{Entries: entries}),
-					)
-				}
 			}
 			c.nodes.Unlock()
 			for _, message := range messages {
@@ -180,11 +160,41 @@ func (c *logCoordinator) handleMessage(_ context.Context, targetMessage *messagi
 				req:    msg,
 				target: targetMessage.From,
 			}
+		case *common.LogCoordinatorResolvedTsRequest:
+			c.sendResolvedTsToCoordinator()
 		default:
 			log.Panic("invalid message type", zap.Any("msg", msg))
 		}
 	}
 	return nil
+}
+
+func (c *logCoordinator) sendResolvedTsToCoordinator() {
+	c.nodes.Lock()
+	defer c.nodes.Unlock()
+	messages := make([]*messaging.TargetMessage, 0, len(c.nodes.m))
+	phyResolvedTs := c.getAllPullerPhyResolvedTs()
+	entries := make([]*heartbeatpb.ChangefeedLogCoordinatorResolvedTsEntry, 0, len(phyResolvedTs))
+	if len(phyResolvedTs) > 0 {
+		for cfID, ts := range phyResolvedTs {
+			entries = append(entries, &heartbeatpb.ChangefeedLogCoordinatorResolvedTsEntry{
+				ChangefeedID: cfID.ToPB(),
+				ResolvedTs:   ts,
+			})
+		}
+	}
+	for id := range c.nodes.m {
+		// We don't know which id is coordinator, so we broadcast to all nodes.
+		// If we try to find the coordinator node, we need to maintain a etcd client in log coordinator,
+		// and get the coordinator info from etcd every broadcastTick.
+		if len(entries) != 0 {
+			messages = append(messages, messaging.NewSingleTargetMessage(
+				id,
+				messaging.CoordinatorTopic,
+				&heartbeatpb.AllChangefeedLogCoordinatorResolvedTs{Entries: entries}),
+			)
+		}
+	}
 }
 
 func (c *logCoordinator) handleNodeChange(allNodes map[node.ID]*node.Info) {
@@ -308,7 +318,7 @@ func (c *logCoordinator) updateChangefeedMetrics() {
 		}
 
 		phyResolvedTs := oracle.ExtractPhysical(minResolvedTs)
-		state.minPullerResolvedTs = minResolvedTs
+		state.minLogCoordinatorResolvedTs = minResolvedTs
 		state.resolvedTsGauge.Set(float64(phyResolvedTs))
 		lag := float64(pdPhyTs-phyResolvedTs) / 1e3
 		state.resolvedTsLagGauge.Set(lag)
@@ -324,7 +334,7 @@ func (c *logCoordinator) getAllPullerPhyResolvedTs() map[common.ChangeFeedID]uin
 		if len(state.nodeStates) == 0 {
 			continue
 		}
-		result[state.cfID] = state.minPullerResolvedTs
+		result[state.cfID] = state.minLogCoordinatorResolvedTs
 	}
 	return result
 }

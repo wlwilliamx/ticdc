@@ -42,8 +42,8 @@ type Changefeed struct {
 
 	configBytes []byte
 	// it's saved to the backend db
-	lastSavedCheckpointTs *atomic.Uint64
-	pullerResolvedTs      *atomic.Uint64
+	lastSavedCheckpointTs    *atomic.Uint64
+	logCoordinatorResolvedTs *atomic.Uint64
 	// the heartbeatpb.MaintainerStatus is read only
 	status *atomic.Pointer[heartbeatpb.MaintainerStatus]
 
@@ -68,13 +68,13 @@ func NewChangefeed(cfID common.ChangeFeedID,
 	}
 
 	res := &Changefeed{
-		ID:                    cfID,
-		info:                  atomic.NewPointer(info),
-		configBytes:           bytes,
-		lastSavedCheckpointTs: atomic.NewUint64(checkpointTs),
-		pullerResolvedTs:      atomic.NewUint64(0),
-		sinkType:              getSinkType(uri.Scheme),
-		isNew:                 isNew,
+		ID:                       cfID,
+		info:                     atomic.NewPointer(info),
+		configBytes:              bytes,
+		lastSavedCheckpointTs:    atomic.NewUint64(checkpointTs),
+		logCoordinatorResolvedTs: atomic.NewUint64(0),
+		sinkType:                 getSinkType(uri.Scheme),
+		isNew:                    isNew,
 		// Initialize the status
 		status: atomic.NewPointer(
 			&heartbeatpb.MaintainerStatus{
@@ -162,12 +162,12 @@ func (c *Changefeed) UpdateStatus(newStatus *heartbeatpb.MaintainerStatus) (bool
 	return false, config.StateNormal, nil
 }
 
-func (c *Changefeed) GetPullerResolvedTs() uint64 {
-	return c.pullerResolvedTs.Load()
+func (c *Changefeed) GetLogCoordinatorResolvedTs() uint64 {
+	return c.logCoordinatorResolvedTs.Load()
 }
 
-func (c *Changefeed) SetPullerResolvedTs(pullerResolvedTs uint64) {
-	c.pullerResolvedTs.Store(pullerResolvedTs)
+func (c *Changefeed) SetLogCoordinatorResolvedTs(logCoordinatorResolvedTs uint64) {
+	c.logCoordinatorResolvedTs.Store(logCoordinatorResolvedTs)
 }
 
 func (c *Changefeed) ForceUpdateStatus(newStatus *heartbeatpb.MaintainerStatus) (bool, config.FeedState, *heartbeatpb.RunningError) {

@@ -1390,6 +1390,7 @@ func (h *OpenAPIV2) synced(c *gin.Context) {
 		return
 	}
 
+	co.RequestResolvedTsFromLogCoordinator(c, changefeedDisplayName)
 	info, status, err := co.GetChangefeed(c, changefeedDisplayName)
 	if err != nil {
 		_ = c.Error(err)
@@ -1417,7 +1418,7 @@ func (h *OpenAPIV2) synced(c *gin.Context) {
 		c.JSON(http.StatusOK, SyncedStatus{
 			Synced:           true,
 			SinkCheckpointTs: api.JSONTime(oracle.GetTimeFromTS(status.CheckpointTs)),
-			PullerResolvedTs: api.JSONTime(oracle.GetTimeFromTS(status.PullerResolvedTs)),
+			PullerResolvedTs: api.JSONTime(oracle.GetTimeFromTS(status.LogCoordinatorResolvedTs)),
 			LastSyncedTs:     api.JSONTime(oracle.GetTimeFromTS(status.LastSyncedTs)),
 			NowTs:            api.JSONTime(time.Unix(ts/1e3, 0)),
 			Info:             "The data syncing is finished",
@@ -1432,7 +1433,7 @@ func (h *OpenAPIV2) synced(c *gin.Context) {
 	//                    if not healthy --> data is synced
 	if ts-oracle.ExtractPhysical(status.LastSyncedTs) > syncedCheckInterval*1000 {
 		var message string
-		if oracle.ExtractPhysical(status.PullerResolvedTs)-oracle.ExtractPhysical(status.CheckpointTs) < checkpointInterval*1000 {
+		if oracle.ExtractPhysical(status.LogCoordinatorResolvedTs)-oracle.ExtractPhysical(status.CheckpointTs) < checkpointInterval*1000 {
 			message = fmt.Sprintf("Please check whether PD is online and TiKV Regions are all available. " +
 				"If PD is offline or some TiKV regions are not available, it means that the data syncing process is complete. " +
 				"If the gap is large, such as a few minutes, it means that some regions in TiKV are unavailable. " +
@@ -1443,7 +1444,7 @@ func (h *OpenAPIV2) synced(c *gin.Context) {
 		c.JSON(http.StatusOK, SyncedStatus{
 			Synced:           false,
 			SinkCheckpointTs: api.JSONTime(oracle.GetTimeFromTS(status.CheckpointTs)),
-			PullerResolvedTs: api.JSONTime(oracle.GetTimeFromTS(status.PullerResolvedTs)),
+			PullerResolvedTs: api.JSONTime(oracle.GetTimeFromTS(status.LogCoordinatorResolvedTs)),
 			LastSyncedTs:     api.JSONTime(oracle.GetTimeFromTS(status.LastSyncedTs)),
 			NowTs:            api.JSONTime(time.Unix(ts/1e3, 0)),
 			Info:             message,
@@ -1455,7 +1456,7 @@ func (h *OpenAPIV2) synced(c *gin.Context) {
 	c.JSON(http.StatusOK, SyncedStatus{
 		Synced:           false,
 		SinkCheckpointTs: api.JSONTime(oracle.GetTimeFromTS(status.CheckpointTs)),
-		PullerResolvedTs: api.JSONTime(oracle.GetTimeFromTS(status.PullerResolvedTs)),
+		PullerResolvedTs: api.JSONTime(oracle.GetTimeFromTS(status.LogCoordinatorResolvedTs)),
 		LastSyncedTs:     api.JSONTime(oracle.GetTimeFromTS(status.LastSyncedTs)),
 		NowTs:            api.JSONTime(time.Unix(ts/1e3, 0)),
 		Info:             "The data syncing is not finished, please wait",

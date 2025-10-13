@@ -361,8 +361,8 @@ func (db *ChangefeedDB) ReplaceStoppedChangefeed(cf *config.ChangeFeedInfo) {
 }
 
 func (db *ChangefeedDB) UpdateLogCoordinatorResolvedTs(entries []*heartbeatpb.ChangefeedLogCoordinatorResolvedTsEntry) {
-	db.lock.Lock()
-	defer db.lock.Unlock()
+	db.lock.RLock()
+	defer db.lock.RUnlock()
 
 	for _, entry := range entries {
 		cf := db.changefeeds[common.NewChangefeedIDFromPB(entry.ChangefeedID)]

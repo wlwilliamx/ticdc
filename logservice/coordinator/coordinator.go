@@ -56,9 +56,9 @@ type changefeedState struct {
 	cfID       common.ChangeFeedID
 	nodeStates map[node.ID]uint64
 
-	minLogCoordinatorResolvedTs uint64
-	resolvedTsGauge             prometheus.Gauge
-	resolvedTsLagGauge          prometheus.Gauge
+	minPullerResolvedTs uint64
+	resolvedTsGauge     prometheus.Gauge
+	resolvedTsLagGauge  prometheus.Gauge
 }
 
 type logCoordinator struct {
@@ -305,7 +305,7 @@ func (c *logCoordinator) updateChangefeedMetrics() {
 		}
 
 		phyResolvedTs := oracle.ExtractPhysical(minResolvedTs)
-		state.minLogCoordinatorResolvedTs = minResolvedTs
+		state.minPullerResolvedTs = minResolvedTs
 		state.resolvedTsGauge.Set(float64(phyResolvedTs))
 		lag := float64(pdPhyTs-phyResolvedTs) / 1e3
 		state.resolvedTsLagGauge.Set(lag)
@@ -318,7 +318,7 @@ func (c *logCoordinator) getMinLogCoordinatorResolvedTs(cfID common.ChangeFeedID
 
 	gid := cfID.ID()
 	if state, exists := c.changefeedStates.m[gid]; exists {
-		return state.minLogCoordinatorResolvedTs
+		return state.minPullerResolvedTs
 	}
 	return 0
 }

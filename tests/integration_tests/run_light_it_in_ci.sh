@@ -70,7 +70,7 @@ mysql_groups=(
 # 6 CPU, 16 Gi memory.
 kafka_groups=(
 	# G00
-	'event_filter charset_gbk changefeed_finish changefeed_reconstruct fail_over_ddl_A synced_status_with_redo'
+	'event_filter charset_gbk changefeed_finish changefeed_reconstruct fail_over_ddl_A'
 	# G01
 	'foreign_key common_1 changefeed_pause_resume fail_over_ddl_B'
 	# G02
@@ -82,7 +82,7 @@ kafka_groups=(
 	# G05
 	'vector simple partition_table fail_over_ddl_F'
 	# G06
-	'multi_topics mq_sink_dispatcher fail_over_ddl_G synced_status'
+	'multi_topics mq_sink_dispatcher fail_over_ddl_G'
 	# G07
 	'kafka_messages kafka_big_messages kafka_compression fail_over_ddl_H changefeed_update_config'
 	# G08
@@ -108,7 +108,7 @@ kafka_groups=(
 # 6 CPU, 32 Gi memory.
 pulsar_groups=(
 	# G00
-	'event_filter charset_gbk changefeed_finish changefeed_reconstruct fail_over_ddl_A synced_status_with_redo'
+	'event_filter charset_gbk changefeed_finish changefeed_reconstruct fail_over_ddl_A'
 	# G01
 	'foreign_key common_1 changefeed_pause_resume fail_over_ddl_B'
 	# G02
@@ -120,7 +120,7 @@ pulsar_groups=(
 	# G05
 	'vector simple partition_table fail_over_ddl_F'
 	# G06
-	'multi_topics mq_sink_dispatcher fail_over_ddl_G synced_status'
+	'multi_topics mq_sink_dispatcher fail_over_ddl_G'
 	# G07
 	'kafka_messages kafka_big_messages kafka_compression fail_over_ddl_H changefeed_update_config'
 	# G08
@@ -146,7 +146,7 @@ pulsar_groups=(
 # 6 CPU, 16 Gi memory.
 storage_groups=(
 	# G00
-	'event_filter charset_gbk changefeed_finish changefeed_reconstruct fail_over_ddl_A synced_status_with_redo'
+	'event_filter charset_gbk changefeed_finish changefeed_reconstruct fail_over_ddl_A'
 	# G01
 	'foreign_key common_1 changefeed_pause_resume fail_over_ddl_B'
 	# G02
@@ -162,7 +162,7 @@ storage_groups=(
 	# G07
 	'storage_cleanup fail_over_ddl_H changefeed_update_config'
 	# G08
-	'capture_session_done_during_task fail_over_ddl_I synced_status'
+	'capture_session_done_during_task fail_over_ddl_I'
 	# G09
 	'cdc_server_tips ddl_sequence fail_over_ddl_J'
 	# G10

@@ -19,7 +19,6 @@ import (
 	"sync"
 
 	"github.com/pingcap/log"
-	"github.com/pingcap/ticdc/heartbeatpb"
 	"github.com/pingcap/ticdc/pkg/common"
 	"github.com/pingcap/ticdc/pkg/config"
 	"github.com/pingcap/ticdc/pkg/metrics"
@@ -360,15 +359,13 @@ func (db *ChangefeedDB) ReplaceStoppedChangefeed(cf *config.ChangeFeedInfo) {
 	db.changefeeds[cf.ChangefeedID] = newCf
 }
 
-func (db *ChangefeedDB) UpdateLogCoordinatorResolvedTs(entries []*heartbeatpb.ChangefeedLogCoordinatorResolvedTsEntry) {
+func (db *ChangefeedDB) UpdateLogCoordinatorResolvedTsByID(changefeedID common.ChangeFeedID, resolvedTs uint64) {
 	db.lock.RLock()
 	defer db.lock.RUnlock()
 
-	for _, entry := range entries {
-		cf := db.changefeeds[common.NewChangefeedIDFromPB(entry.ChangefeedID)]
-		if cf != nil {
-			cf.SetLogCoordinatorResolvedTs(entry.ResolvedTs)
-		}
+	cf := db.changefeeds[changefeedID]
+	if cf != nil {
+		cf.SetLogCoordinatorResolvedTs(resolvedTs)
 	}
 }
 
@@ -381,4 +378,11 @@ func (db *ChangefeedDB) GetLogCoordinatorResolvedTsByName(name common.ChangeFeed
 		return cf.GetLogCoordinatorResolvedTs()
 	}
 	return 0
+}
+
+func (db *ChangefeedDB) GetChangefeedIDByName(name common.ChangeFeedDisplayName) common.ChangeFeedID {
+	db.lock.RLock()
+	defer db.lock.RUnlock()
+
+	return db.changefeedDisplayNames[name]
 }

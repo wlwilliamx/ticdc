@@ -64,7 +64,6 @@ const (
 	TypeReusableEventServiceRequest
 	TypeReusableEventServiceResponse
 	TypeLogCoordinatorResolvedTsRequest
-	TypeLogCoordinatorResolvedTsResponse
 
 	// EventCollector related
 	TypeHeartBeatRequest
@@ -91,6 +90,7 @@ const (
 	TypeMaintainerPostBootstrapResponse
 	TypeMaintainerCloseRequest
 	TypeMaintainerCloseResponse
+	TypeLogCoordinatorResolvedTsResponse
 
 	TypeMessageHandShake
 
@@ -357,9 +357,9 @@ func decodeIOType(ioType IOType, value []byte) (IOTypeT, error) {
 	case TypeLogCoordinatorChangefeedStates:
 		m = &logservicepb.ChangefeedStates{}
 	case TypeLogCoordinatorResolvedTsRequest:
-		m = &common.LogCoordinatorResolvedTsRequest{}
+		m = &heartbeatpb.LogCoordinatorResolvedTsRequest{}
 	case TypeLogCoordinatorResolvedTsResponse:
-		m = &heartbeatpb.AllChangefeedLogCoordinatorResolvedTs{}
+		m = &heartbeatpb.LogCoordinatorResolvedTsResponse{}
 	default:
 		log.Panic("Unimplemented IOType", zap.Stringer("Type", ioType))
 	}
@@ -459,9 +459,9 @@ func NewSingleTargetMessage(To node.ID, Topic string, Message IOTypeT, Group ...
 		ioType = TypeMergeDispatcherRequest
 	case *logservicepb.ChangefeedStates:
 		ioType = TypeLogCoordinatorChangefeedStates
-	case *common.LogCoordinatorResolvedTsRequest:
+	case *heartbeatpb.LogCoordinatorResolvedTsRequest:
 		ioType = TypeLogCoordinatorResolvedTsRequest
-	case *heartbeatpb.AllChangefeedLogCoordinatorResolvedTs:
+	case *heartbeatpb.LogCoordinatorResolvedTsResponse:
 		ioType = TypeLogCoordinatorResolvedTsResponse
 	default:
 		panic("unknown io type")

@@ -160,8 +160,8 @@ func (c *logCoordinator) handleMessage(_ context.Context, targetMessage *messagi
 				req:    msg,
 				target: targetMessage.From,
 			}
-		case *common.LogCoordinatorResolvedTsRequest:
-			c.sendResolvedTsToCoordinator()
+		case *heartbeatpb.LogCoordinatorResolvedTsRequest:
+			c.sendResolvedTsToCoordinator(targetMessage.From, common.NewChangefeedIDFromPB(msg.ChangefeedID))
 		default:
 			log.Panic("invalid message type", zap.Any("msg", msg))
 		}
@@ -169,32 +169,19 @@ func (c *logCoordinator) handleMessage(_ context.Context, targetMessage *messagi
 	return nil
 }
 
-func (c *logCoordinator) sendResolvedTsToCoordinator() {
+func (c *logCoordinator) sendResolvedTsToCoordinator(id node.ID, changefeedID common.ChangeFeedID) {
 	c.nodes.Lock()
 	defer c.nodes.Unlock()
-	messages := make([]*messaging.TargetMessage, 0, len(c.nodes.m))
-	phyResolvedTs := c.getAllPullerPhyResolvedTs()
-	entries := make([]*heartbeatpb.ChangefeedLogCoordinatorResolvedTsEntry, 0, len(phyResolvedTs))
-	if len(phyResolvedTs) > 0 {
-		for cfID, ts := range phyResolvedTs {
-			entries = append(entries, &heartbeatpb.ChangefeedLogCoordinatorResolvedTsEntry{
-				ChangefeedID: cfID.ToPB(),
-				ResolvedTs:   ts,
-			})
-		}
-	}
-	for id := range c.nodes.m {
-		// We don't know which id is coordinator, so we broadcast to all nodes.
-		// If we try to find the coordinator node, we need to maintain a etcd client in log coordinator,
-		// and get the coordinator info from etcd every broadcastTick.
-		if len(entries) != 0 {
-			messages = append(messages, messaging.NewSingleTargetMessage(
-				id,
-				messaging.CoordinatorTopic,
-				&heartbeatpb.AllChangefeedLogCoordinatorResolvedTs{Entries: entries}),
-			)
-		}
-	}
+	resolvedTs := c.getMinLogCoordinatorResolvedTs(changefeedID)
+	msg := messaging.NewSingleTargetMessage(
+		id,
+		messaging.CoordinatorTopic,
+		&heartbeatpb.LogCoordinatorResolvedTsResponse{
+			ChangefeedID: changefeedID.ToPB(),
+			ResolvedTs:   resolvedTs,
+		},
+	)
+	c.messageCenter.SendEvent(msg)
 }
 
 func (c *logCoordinator) handleNodeChange(allNodes map[node.ID]*node.Info) {
@@ -325,18 +312,15 @@ func (c *logCoordinator) updateChangefeedMetrics() {
 	}
 }
 
-func (c *logCoordinator) getAllPullerPhyResolvedTs() map[common.ChangeFeedID]uint64 {
-	result := make(map[common.ChangeFeedID]uint64)
+func (c *logCoordinator) getMinLogCoordinatorResolvedTs(cfID common.ChangeFeedID) uint64 {
 	c.changefeedStates.Lock()
 	defer c.changefeedStates.Unlock()
 
-	for _, state := range c.changefeedStates.m {
-		if len(state.nodeStates) == 0 {
-			continue
-		}
-		result[state.cfID] = state.minLogCoordinatorResolvedTs
+	gid := cfID.ID()
+	if state, exists := c.changefeedStates.m[gid]; exists {
+		return state.minLogCoordinatorResolvedTs
 	}
-	return result
+	return 0
 }
 
 // getCandidateNode return all nodes(exclude the request node) which may contain data for `span` from `startTs`,

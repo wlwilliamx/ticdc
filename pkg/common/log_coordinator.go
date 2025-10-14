@@ -22,13 +22,3 @@ func (l *LogCoordinatorBroadcastRequest) Marshal() ([]byte, error) {
 func (l *LogCoordinatorBroadcastRequest) Unmarshal(data []byte) error {
 	return nil
 }
-
-type LogCoordinatorResolvedTsRequest struct{}
-
-func (l *LogCoordinatorResolvedTsRequest) Marshal() ([]byte, error) {
-	return nil, nil
-}
-
-func (l *LogCoordinatorResolvedTsRequest) Unmarshal(data []byte) error {
-	return nil
-}

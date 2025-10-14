@@ -263,7 +263,8 @@ func (c *Controller) onMessage(msg *messaging.TargetMessage) {
 }
 
 func (c *Controller) onLogCoordinatorReportResolvedTs(msg *messaging.TargetMessage) {
-	c.changefeedDB.UpdateLogCoordinatorResolvedTs(msg.Message[0].(*heartbeatpb.AllChangefeedLogCoordinatorResolvedTs).Entries)
+	resp := msg.Message[0].(*heartbeatpb.LogCoordinatorResolvedTsResponse)
+	c.changefeedDB.UpdateLogCoordinatorResolvedTsByID(common.NewChangefeedIDFromPB(resp.ChangefeedID), resp.ResolvedTs)
 }
 
 func (c *Controller) RequestResolvedTsFromLogCoordinator(ctx context.Context, changefeedDisplayName common.ChangeFeedDisplayName) {
@@ -271,9 +272,12 @@ func (c *Controller) RequestResolvedTsFromLogCoordinator(ctx context.Context, ch
 	oldTs := c.changefeedDB.GetLogCoordinatorResolvedTsByName(changefeedDisplayName)
 
 	// request all log coordinators to report resolved ts
+	changefeedID := c.changefeedDB.GetChangefeedIDByName(changefeedDisplayName)
 	ids := c.nodeManager.GetAliveNodeIDs()
 	for _, id := range ids {
-		c.messageCenter.SendEvent(messaging.NewSingleTargetMessage(id, messaging.LogCoordinatorTopic, &common.LogCoordinatorResolvedTsRequest{}))
+		c.messageCenter.SendEvent(messaging.NewSingleTargetMessage(id, messaging.LogCoordinatorTopic, &heartbeatpb.LogCoordinatorResolvedTsRequest{
+			ChangefeedID: changefeedID.ToPB(),
+		}))
 	}
 
 	// wait for some time to get the resolved ts

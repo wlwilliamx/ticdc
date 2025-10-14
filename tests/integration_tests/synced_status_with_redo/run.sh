@@ -242,7 +242,7 @@ function run_case_with_unavailable_tidb() {
 		exit 1
 	fi
 	info=$(echo $synced_status | jq -r '.info')
-	target_message="Data syncing is finished"
+	target_message="The data syncing is finished"
 
 	if [ "$info" != "$target_message" ]; then
 		echo "synced status info is not correct"

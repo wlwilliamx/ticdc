@@ -697,7 +697,8 @@ type ChangeFeedStatus struct {
 	// LastSyncedTs is the last synced max timestamp of the changefeed.
 	// It is used to indicate the progress of the changefeed.
 	// It is not stored in etcd.
-	LastSyncedTs             uint64 `json:"-"`
+	LastSyncedTs uint64 `json:"-"`
+	// LogCoordinatorResolvedTs is the resolved timestamp from the log coordinator.
 	LogCoordinatorResolvedTs uint64 `json:"-"`
 }
 

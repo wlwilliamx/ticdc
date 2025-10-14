@@ -45,7 +45,7 @@ func CaptureOwnerKey(clusterID string) string {
 }
 
 func LogCoordinatorKey(clusterID string) string {
-	return BaseKey(clusterID) + metaPrefix + "/log_coordinator"
+	return NewCDCBaseKey(clusterID) + metaPrefix + "/log_coordinator"
 }
 
 // CaptureInfoKeyPrefix is the capture info path that is saved to etcd

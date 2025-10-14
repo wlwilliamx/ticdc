@@ -44,9 +44,9 @@ mysql_groups=(
 	# G05
 	'vector simple partition_table fail_over_ddl_F'
 	# G06
-	'http_api http_api_tls fail_over_ddl_G'
+	'http_api http_api_tls fail_over_ddl_G synced_status'
 	# G07
-	'http_api_tls_with_user_auth fail_over_ddl_H changefeed_update_config'
+	'http_api_tls_with_user_auth fail_over_ddl_H changefeed_update_config synced_status_with_redo'
 	# G08
 	'capture_session_done_during_task changefeed_dup_error_restart mysql_sink_retry fail_over_ddl_I'
 	# G09
@@ -70,7 +70,7 @@ mysql_groups=(
 # 6 CPU, 16 Gi memory.
 kafka_groups=(
 	# G00
-	'event_filter charset_gbk changefeed_finish changefeed_reconstruct fail_over_ddl_A'
+	'event_filter charset_gbk changefeed_finish changefeed_reconstruct fail_over_ddl_A synced_status_with_redo'
 	# G01
 	'foreign_key common_1 changefeed_pause_resume fail_over_ddl_B'
 	# G02
@@ -82,7 +82,7 @@ kafka_groups=(
 	# G05
 	'vector simple partition_table fail_over_ddl_F'
 	# G06
-	'multi_topics mq_sink_dispatcher fail_over_ddl_G'
+	'multi_topics mq_sink_dispatcher fail_over_ddl_G synced_status'
 	# G07
 	'kafka_messages kafka_big_messages kafka_compression fail_over_ddl_H changefeed_update_config'
 	# G08
@@ -108,7 +108,7 @@ kafka_groups=(
 # 6 CPU, 32 Gi memory.
 pulsar_groups=(
 	# G00
-	'event_filter charset_gbk changefeed_finish changefeed_reconstruct fail_over_ddl_A'
+	'event_filter charset_gbk changefeed_finish changefeed_reconstruct fail_over_ddl_A synced_status_with_redo'
 	# G01
 	'foreign_key common_1 changefeed_pause_resume fail_over_ddl_B'
 	# G02
@@ -120,7 +120,7 @@ pulsar_groups=(
 	# G05
 	'vector simple partition_table fail_over_ddl_F'
 	# G06
-	'multi_topics mq_sink_dispatcher fail_over_ddl_G'
+	'multi_topics mq_sink_dispatcher fail_over_ddl_G synced_status'
 	# G07
 	'kafka_messages kafka_big_messages kafka_compression fail_over_ddl_H changefeed_update_config'
 	# G08
@@ -146,7 +146,7 @@ pulsar_groups=(
 # 6 CPU, 16 Gi memory.
 storage_groups=(
 	# G00
-	'event_filter charset_gbk changefeed_finish changefeed_reconstruct fail_over_ddl_A'
+	'event_filter charset_gbk changefeed_finish changefeed_reconstruct fail_over_ddl_A synced_status_with_redo'
 	# G01
 	'foreign_key common_1 changefeed_pause_resume fail_over_ddl_B'
 	# G02
@@ -162,7 +162,7 @@ storage_groups=(
 	# G07
 	'storage_cleanup fail_over_ddl_H changefeed_update_config'
 	# G08
-	'capture_session_done_during_task fail_over_ddl_I'
+	'capture_session_done_during_task fail_over_ddl_I synced_status'
 	# G09
 	'cdc_server_tips ddl_sequence fail_over_ddl_J'
 	# G10

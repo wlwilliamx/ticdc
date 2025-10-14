@@ -429,8 +429,8 @@ func (c *coordinator) Stop() {
 	}
 }
 
-func (c *coordinator) GetLogCoordinatorResolvedTs() {
-	// c.controller.GetLogCoordinatorResolvedTs()
+func (c *coordinator) RequestResolvedTsFromLogCoordinator(ctx context.Context, changefeedDisplayName common.ChangeFeedDisplayName) {
+	c.controller.RequestResolvedTsFromLogCoordinator(ctx, changefeedDisplayName)
 }
 
 func (c *coordinator) sendMessages(msgs []*messaging.TargetMessage) {

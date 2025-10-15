@@ -56,9 +56,10 @@ type changefeedState struct {
 	cfID       common.ChangeFeedID
 	nodeStates map[node.ID]uint64
 
-	minPullerResolvedTs uint64
-	resolvedTsGauge     prometheus.Gauge
-	resolvedTsLagGauge  prometheus.Gauge
+	// equal to min puller resolved ts
+	minLogServiceResolvedTs uint64
+	resolvedTsGauge         prometheus.Gauge
+	resolvedTsLagGauge      prometheus.Gauge
 }
 
 type logCoordinator struct {
@@ -172,7 +173,7 @@ func (c *logCoordinator) handleMessage(_ context.Context, targetMessage *messagi
 func (c *logCoordinator) sendResolvedTsToCoordinator(id node.ID, changefeedID common.ChangeFeedID) {
 	c.nodes.Lock()
 	defer c.nodes.Unlock()
-	resolvedTs := c.getMinLogCoordinatorResolvedTs(changefeedID)
+	resolvedTs := c.getMinLogServiceResolvedTs(changefeedID)
 	msg := messaging.NewSingleTargetMessage(
 		id,
 		messaging.CoordinatorTopic,
@@ -305,20 +306,20 @@ func (c *logCoordinator) updateChangefeedMetrics() {
 		}
 
 		phyResolvedTs := oracle.ExtractPhysical(minResolvedTs)
-		state.minPullerResolvedTs = minResolvedTs
+		state.minLogServiceResolvedTs = minResolvedTs
 		state.resolvedTsGauge.Set(float64(phyResolvedTs))
 		lag := float64(pdPhyTs-phyResolvedTs) / 1e3
 		state.resolvedTsLagGauge.Set(lag)
 	}
 }
 
-func (c *logCoordinator) getMinLogCoordinatorResolvedTs(cfID common.ChangeFeedID) uint64 {
+func (c *logCoordinator) getMinLogServiceResolvedTs(cfID common.ChangeFeedID) uint64 {
 	c.changefeedStates.Lock()
 	defer c.changefeedStates.Unlock()
 
 	gid := cfID.ID()
 	if state, exists := c.changefeedStates.m[gid]; exists {
-		return state.minPullerResolvedTs
+		return state.minLogServiceResolvedTs
 	}
 	return 0
 }

@@ -1084,6 +1084,9 @@ func (m *Maintainer) getWatermark() heartbeatpb.Watermark {
 func (m *Maintainer) setWatermark(newWatermark heartbeatpb.Watermark) {
 	m.watermark.mu.Lock()
 	defer m.watermark.mu.Unlock()
+	failpoint.Inject("CoordinatorDontUpdateChangefeedCheckpoint", func() {
+		newWatermark.CheckpointTs = m.watermark.CheckpointTs
+	})
 	if newWatermark.CheckpointTs != math.MaxUint64 {
 		m.watermark.CheckpointTs = newWatermark.CheckpointTs
 	}

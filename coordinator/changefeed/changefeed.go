@@ -18,7 +18,6 @@ import (
 	"net/url"
 	"sync"
 
-	"github.com/pingcap/failpoint"
 	"github.com/pingcap/log"
 	"github.com/pingcap/ticdc/heartbeatpb"
 	"github.com/pingcap/ticdc/pkg/common"
@@ -141,9 +140,6 @@ func (c *Changefeed) ShouldRun() bool {
 // It returns the new state and error if the status is changed
 func (c *Changefeed) UpdateStatus(newStatus *heartbeatpb.MaintainerStatus) (bool, config.FeedState, *heartbeatpb.RunningError) {
 	old := c.status.Load()
-	failpoint.Inject("CoordinatorDontUpdateChangefeedCheckpoint", func() {
-		newStatus = old
-	})
 
 	if newStatus != nil && newStatus.CheckpointTs >= old.CheckpointTs {
 		c.status.Store(newStatus)

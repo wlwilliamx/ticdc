@@ -247,10 +247,52 @@ function run_case_with_unavailable_tidb() {
 	stop_tidb_cluster
 }
 
+function run_case_with_failpoint() {
+	rm -rf $WORK_DIR && mkdir -p $WORK_DIR
+
+	start_tidb_cluster --workdir $WORK_DIR
+
+	cd $WORK_DIR
+
+	# make failpoint to block checkpoint-ts
+	export GO_FAILPOINTS='github.com/pingcap/tiflow/cdc/owner/CoordinatorDontUpdateChangefeedCheckpoint=return(true)'
+
+	start_ts=$(run_cdc_cli_tso_query ${UP_PD_HOST_1} ${UP_PD_PORT_1})
+	run_cdc_server --workdir $WORK_DIR --binary $CDC_BINARY
+
+	config_path=$1
+
+	SINK_URI="mysql://root@127.0.0.1:3306/?max-txn-row=1"
+	run_cdc_cli changefeed create --start-ts=$start_ts --sink-uri="$SINK_URI" --changefeed-id="test-1" --config="$CUR/$config_path"
+
+	sleep 20 # wait enough time for pass checkpoint-check-interval
+	synced_status=$(curl -X GET http://127.0.0.1:8300/api/v2/changefeeds/test-1/synced)
+	status=$(echo $synced_status | jq '.synced')
+	if [ $status != false ]; then
+		echo "synced status isn't correct"
+		exit 1
+	fi
+	info=$(echo $synced_status | jq -r '.info')
+	target_message="Please check whether PD is online and TiKV Regions are all available. \
+If PD is offline or some TiKV regions are not available, it means that the data syncing process is complete. \
+If the gap is large, such as a few minutes, it means that some regions in TiKV are unavailable. \
+Otherwise, if the gap is small and PD is online, it means the data syncing is incomplete, so please wait"
+	if [ "$info" != "$target_message" ]; then
+		echo "synced status info is not correct"
+		exit 1
+	fi
+
+	export GO_FAILPOINTS=''
+
+	cleanup_process $CDC_BINARY
+	stop_tidb_cluster
+}
+
 trap stop_tidb_cluster EXIT
 run_normal_case_and_unavailable_pd "conf/changefeed.toml"
 run_case_with_unavailable_tikv "conf/changefeed.toml"
 run_case_with_unavailable_tidb "conf/changefeed.toml"
+run_case_with_failpoint "conf/changefeed.toml"
 
 check_logs $WORK_DIR
 echo "[$(date)] <<<<<< run test case $TEST_NAME success! >>>>>>"

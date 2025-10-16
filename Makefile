@@ -76,7 +76,7 @@ ifeq ($(RELEASE_VERSION),)
 	RELEASE_VERSION := $(shell git describe --tags --dirty)
 endif
 ifeq ($(RELEASE_VERSION),)
-	RELEASE_VERSION := v9.0.0-alpha
+	RELEASE_VERSION := v8.5.4-release.1
 endif
 
 # Version LDFLAGS.

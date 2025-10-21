@@ -179,7 +179,7 @@ func (a *saramaAdminClient) CreateTopic(
 func (a *saramaAdminClient) Heartbeat() {
 	brokers := a.client.Brokers()
 	for _, b := range brokers {
-		_, _ = b.ListGroups(&sarama.ListGroupsRequest{})
+		_, _ = b.ApiVersions(&sarama.ApiVersionsRequest{})
 	}
 }
 

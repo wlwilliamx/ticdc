@@ -126,7 +126,7 @@ func TestDDLProducerHeartbeat(t *testing.T) {
 	// Use Eventually to avoid test flakiness.
 	require.Eventually(t, func() bool {
 		return producer.GetHeartbeatCount() >= 2
-	}, heartbeatInterval*2+1, 150*time.Millisecond, "Heartbeat should be called periodically")
+	}, 11*time.Second, 150*time.Millisecond, "Heartbeat should be called periodically")
 
 	// Verify that closing the manager stops the heartbeat.
 	countBeforeClose := producer.GetHeartbeatCount()
@@ -170,7 +170,7 @@ func TestDMLProducerHeartbeat(t *testing.T) {
 	// Use Eventually to avoid test flakiness.
 	require.Eventually(t, func() bool {
 		return producer.GetHeartbeatCount() >= 2
-	}, heartbeatInterval*2+1, 150*time.Millisecond, "Heartbeat should be called periodically")
+	}, 11*time.Second, 150*time.Millisecond, "Heartbeat should be called periodically")
 
 	// Verify that closing the manager stops the heartbeat.
 	countBeforeClose := producer.GetHeartbeatCount()

@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/IBM/sarama/mocks"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/ticdc/downstreamadapter/sink/helper"
 	"github.com/pingcap/ticdc/pkg/common"
@@ -33,7 +34,10 @@ import (
 	"go.uber.org/atomic"
 )
 
-func newKafkaSinkForTest(ctx context.Context) (*sink, error) {
+func newKafkaSinkForTestWithProducers(ctx context.Context,
+	asyncProducer kafka.AsyncProducer,
+	syncProducer kafka.SyncProducer,
+) (*sink, error) {
 	changefeedID := common.NewChangefeedID4Test("test", "test")
 	openProtocol := "open-protocol"
 	sinkConfig := &config.SinkConfig{Protocol: &openProtocol}
@@ -60,14 +64,18 @@ func newKafkaSinkForTest(ctx context.Context) (*sink, error) {
 		}
 	}()
 
-	asyncProducer, err := comp.factory.AsyncProducer()
-	if err != nil {
-		return nil, err
+	if asyncProducer == nil {
+		asyncProducer, err = comp.factory.AsyncProducer()
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	syncProducer, err := comp.factory.SyncProducer()
-	if err != nil {
-		return nil, err
+	if syncProducer == nil {
+		syncProducer, err = comp.factory.SyncProducer()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	s := &sink{
@@ -90,6 +98,10 @@ func newKafkaSinkForTest(ctx context.Context) (*sink, error) {
 	}
 	go s.Run(ctx)
 	return s, nil
+}
+
+func newKafkaSinkForTest(ctx context.Context) (*sink, error) {
+	return newKafkaSinkForTestWithProducers(ctx, nil, nil)
 }
 
 // mockSyncProducer is used to count the calls to Heartbeat.
@@ -117,9 +129,8 @@ func TestDDLProducerHeartbeat(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	producer := &mockSyncProducer{}
 	heartbeatInterval := 5 * time.Second
-	sink, err := newKafkaSinkForTest(ctx)
+	_, err := newKafkaSinkForTestWithProducers(ctx, nil, producer)
 	require.NoError(t, err)
-	sink.ddlProducer = producer
 
 	// Wait for a sufficient amount of time to ensure the heartbeat ticker triggers several times.
 	// Waiting for 11 seconds to allow for at least two heartbeats.
@@ -160,10 +171,10 @@ func TestDMLProducerHeartbeat(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	producer := &mockAsyncProducer{}
+	producer.AsyncProducer = mocks.NewAsyncProducer(t, nil)
 	heartbeatInterval := 5 * time.Second
-	sink, err := newKafkaSinkForTest(ctx)
+	_, err := newKafkaSinkForTestWithProducers(ctx, producer, nil)
 	require.NoError(t, err)
-	sink.dmlProducer = producer
 
 	// Wait for a sufficient amount of time to ensure the heartbeat ticker triggers several times.
 	// Waiting for 11 seconds to allow for at least two heartbeats.

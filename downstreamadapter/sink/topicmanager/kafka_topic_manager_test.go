@@ -54,8 +54,7 @@ func TestKafkaTopicManagerHeartbeat(t *testing.T) {
 	heartbeatInterval := 5 * time.Second
 	manager := newKafkaTopicManager(ctx, "topic", changefeedID, adminClient, cfg)
 
-	// Ensure the manager is closed and the context is canceled at the end of the test.
-	defer manager.Close()
+	// Ensure the context is canceled at the end of the test.
 	defer cancel()
 
 	// Wait for a sufficient amount of time to ensure the heartbeat ticker triggers several times.

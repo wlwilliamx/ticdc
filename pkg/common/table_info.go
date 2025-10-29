@@ -558,12 +558,17 @@ func NewTableInfo(schemaName string, tableName string, tableID int64, isPartitio
 	return ti
 }
 
-// WrapTableInfo creates a TableInfo from a model.TableInfo
-func WrapTableInfo(schemaName string, info *model.TableInfo) *TableInfo {
+// WrapTableInfoWithTableID creates a TableInfo from a model.TableInfo with specified tableID
+func WrapTableInfoWithTableID(schemaName string, info *model.TableInfo, tableID int64) *TableInfo {
 	// search column schema object
 	sharedColumnSchemaStorage := GetSharedColumnSchemaStorage()
 	columnSchema := sharedColumnSchemaStorage.GetOrSetColumnSchema(info)
-	return NewTableInfo(schemaName, info.Name.O, info.ID, info.GetPartitionInfo() != nil, columnSchema, info)
+	return NewTableInfo(schemaName, info.Name.O, tableID, info.GetPartitionInfo() != nil, columnSchema, info)
+}
+
+// WrapTableInfo creates a TableInfo from a model.TableInfo
+func WrapTableInfo(schemaName string, info *model.TableInfo) *TableInfo {
+	return WrapTableInfoWithTableID(schemaName, info, info.ID)
 }
 
 // NewTableInfo4Decoder is only used by the codec decoder for the test purpose,

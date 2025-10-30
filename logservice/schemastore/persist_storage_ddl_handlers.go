@@ -1561,7 +1561,11 @@ func extractTableInfoFuncForRemovePartitioning(event *PersistedDDLEvent, tableID
 // =======
 
 func buildDDLEventCommon(rawEvent *PersistedDDLEvent, tableFilter filter.Filter, tiDBOnly bool) (commonEvent.DDLEvent, bool, error) {
-	return buildDDLEventCommonWithTableID(rawEvent, rawEvent.TableInfo.ID, tableFilter, tiDBOnly)
+	tableID := int64(0)
+	if rawEvent.TableInfo != nil {
+		tableID = rawEvent.TableInfo.ID
+	}
+	return buildDDLEventCommonWithTableID(rawEvent, tableID, tableFilter, tiDBOnly)
 }
 
 func buildDDLEventCommonWithTableID(rawEvent *PersistedDDLEvent, tableID int64, tableFilter filter.Filter, tiDBOnly bool) (commonEvent.DDLEvent, bool, error) {

@@ -1450,6 +1450,8 @@ func extractTableInfoFuncForAddPartition(event *PersistedDDLEvent, tableID int64
 	newCreatedIDs := getCreatedIDs(event.PrevPartitions, getAllPartitionIDs(event.TableInfo))
 	for _, partition := range newCreatedIDs {
 		if tableID == partition {
+			// Use WrapTableInfoWithTableID to ensure the returned TableInfo carries
+			// the physical partition ID (tableID) instead of the logical table ID.
 			return common.WrapTableInfoWithTableID(event.SchemaName, event.TableInfo, tableID), false
 		}
 	}
@@ -1477,6 +1479,8 @@ func extractTableInfoFuncForTruncateAndReorganizePartition(event *PersistedDDLEv
 	newCreatedIDs := getCreatedIDs(event.PrevPartitions, physicalIDs)
 	for _, partition := range newCreatedIDs {
 		if tableID == partition {
+			// Use WrapTableInfoWithTableID to ensure the returned TableInfo carries
+			// the physical partition ID (tableID) instead of the logical table ID.
 			return common.WrapTableInfoWithTableID(event.SchemaName, event.TableInfo, tableID), false
 		}
 	}
@@ -1536,6 +1540,8 @@ func extractTableInfoFuncForAlterTablePartitioning(event *PersistedDDLEvent, tab
 	}
 	for _, partitionID := range getAllPartitionIDs(event.TableInfo) {
 		if tableID == partitionID {
+			// Use WrapTableInfoWithTableID to ensure the returned TableInfo carries
+			// the physical partition ID (tableID) instead of the logical table ID.
 			return common.WrapTableInfoWithTableID(event.SchemaName, event.TableInfo, tableID), false
 		}
 	}
@@ -1545,6 +1551,8 @@ func extractTableInfoFuncForAlterTablePartitioning(event *PersistedDDLEvent, tab
 
 func extractTableInfoFuncForRemovePartitioning(event *PersistedDDLEvent, tableID int64) (*common.TableInfo, bool) {
 	if event.TableID == tableID {
+		// Use WrapTableInfoWithTableID to ensure the returned TableInfo carries
+		// the physical partition ID (tableID) instead of the logical table ID.
 		return common.WrapTableInfoWithTableID(event.SchemaName, event.TableInfo, tableID), false
 	}
 	for _, partitionID := range event.PrevPartitions {
@@ -1560,6 +1568,10 @@ func extractTableInfoFuncForRemovePartitioning(event *PersistedDDLEvent, tableID
 // buildDDLEvent begin
 // =======
 
+// buildDDLEventCommon wraps buildDDLEventCommonWithTableID, defaulting to use
+// the logical table ID (rawEvent.TableInfo.ID).
+// This maintains compatibility for DDL handlers that do not operate on
+// specific physical partitions.
 func buildDDLEventCommon(rawEvent *PersistedDDLEvent, tableFilter filter.Filter, tiDBOnly bool) (commonEvent.DDLEvent, bool, error) {
 	tableID := int64(0)
 	if rawEvent.TableInfo != nil {
@@ -1568,6 +1580,13 @@ func buildDDLEventCommon(rawEvent *PersistedDDLEvent, tableFilter filter.Filter,
 	return buildDDLEventCommonWithTableID(rawEvent, tableID, tableFilter, tiDBOnly)
 }
 
+// buildDDLEventCommonWithTableID constructs a commonEvent.DDLEvent using a
+// *specific* tableID.
+// This function is the core builder, ensuring that both the DDLEvent.TableID
+// field and the associated wrapTableInfo (if it exists) are populated
+// with the provided tableID.
+// For partition-related DDLs, this tableID should be the physical partition ID.
+// For other DDLs, it defaults to the logical table ID.
 func buildDDLEventCommonWithTableID(rawEvent *PersistedDDLEvent, tableID int64, tableFilter filter.Filter, tiDBOnly bool) (commonEvent.DDLEvent, bool, error) {
 	var wrapTableInfo *common.TableInfo
 	// Note: not all ddl types will respect the `filtered` result: create tables, rename tables, rename table, exchange table partition.
@@ -1631,6 +1650,8 @@ func buildDDLEventCommonWithTableID(rawEvent *PersistedDDLEvent, tableID int64, 
 	}
 
 	if rawEvent.TableInfo != nil {
+		// Use the provided tableID (which could be a physical partition ID)
+		// to create the TableInfo wrapper.
 		wrapTableInfo = common.WrapTableInfoWithTableID(rawEvent.SchemaName, rawEvent.TableInfo, tableID)
 	}
 

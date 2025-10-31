@@ -235,10 +235,6 @@ func enhancedKeyValue(key, value []byte) ([]byte, []byte) {
 
 func (d *batchEncoder) EncodeDDLEvent(e *commonEvent.DDLEvent) (*common.Message, error) {
 	lock.Lock()
-	log.Info("========================== ")
-	log.Info("Encoding DDL Event", zap.Bool("nilTableInfo", e.TableInfo == nil), zap.String("query", e.Query), zap.Int64("schemaID", e.SchemaID), zap.String("schemaName", e.SchemaName), zap.String("tableName", e.TableName))
-	log.Info("========================== ")
-
 	delete(columnFlagsCache, e.TableInfo.TableName.TableID)
 	defer lock.Unlock()
 

@@ -178,7 +178,7 @@ func (h *OpenAPIV2) CreateChangefeed(c *gin.Context) {
 	// verify replicaConfig
 	sinkURIParsed, err := url.Parse(cfg.SinkURI)
 	if err != nil {
-		_ = c.Error(errors.WrapError(errors.ErrSinkURIInvalid, err))
+		_ = c.Error(errors.WrapError(errors.ErrSinkURIInvalid, err, cfg.SinkURI))
 		return
 	}
 	err = replicaCfg.ValidateAndAdjust(sinkURIParsed)
@@ -192,7 +192,7 @@ func (h *OpenAPIV2) CreateChangefeed(c *gin.Context) {
 	if config.IsMQScheme(scheme) {
 		topic, err = helper.GetTopic(sinkURIParsed)
 		if err != nil {
-			_ = c.Error(errors.WrapError(errors.ErrSinkURIInvalid, err))
+			_ = c.Error(errors.WrapError(errors.ErrSinkURIInvalid, err, cfg.SinkURI))
 			return
 		}
 	}
@@ -244,7 +244,7 @@ func (h *OpenAPIV2) CreateChangefeed(c *gin.Context) {
 	cfConfig := info.ToChangefeedConfig()
 	err = sink.Verify(ctx, cfConfig, changefeedID)
 	if err != nil {
-		_ = c.Error(errors.WrapError(errors.ErrSinkURIInvalid, err))
+		_ = c.Error(errors.WrapError(errors.ErrSinkURIInvalid, err, cfg.SinkURI))
 		return
 	}
 
@@ -361,7 +361,7 @@ func (h *OpenAPIV2) VerifyTable(c *gin.Context) {
 	// verify replicaConfig
 	sinkURIParsed, err := url.Parse(cfg.SinkURI)
 	if err != nil {
-		_ = c.Error(errors.WrapError(errors.ErrSinkURIInvalid, err))
+		_ = c.Error(errors.WrapError(errors.ErrSinkURIInvalid, err, cfg.SinkURI))
 		return
 	}
 	err = replicaCfg.ValidateAndAdjust(sinkURIParsed)
@@ -375,7 +375,7 @@ func (h *OpenAPIV2) VerifyTable(c *gin.Context) {
 	if config.IsMQScheme(scheme) {
 		topic, err = helper.GetTopic(sinkURIParsed)
 		if err != nil {
-			_ = c.Error(errors.WrapError(errors.ErrSinkURIInvalid, err))
+			_ = c.Error(errors.WrapError(errors.ErrSinkURIInvalid, err, cfg.SinkURI))
 			return
 		}
 	}
@@ -800,7 +800,7 @@ func (h *OpenAPIV2) UpdateChangefeed(c *gin.Context) {
 		// verify replicaConfig
 		sinkURIParsed, err := url.Parse(oldCfInfo.SinkURI)
 		if err != nil {
-			_ = c.Error(errors.WrapError(errors.ErrSinkURIInvalid, err))
+			_ = c.Error(errors.WrapError(errors.ErrSinkURIInvalid, err, oldCfInfo.SinkURI))
 			return
 		}
 		err = oldCfInfo.Config.ValidateAndAdjust(sinkURIParsed)
@@ -814,7 +814,7 @@ func (h *OpenAPIV2) UpdateChangefeed(c *gin.Context) {
 		if config.IsMQScheme(scheme) {
 			topic, err = helper.GetTopic(sinkURIParsed)
 			if err != nil {
-				_ = c.Error(errors.WrapError(errors.ErrSinkURIInvalid, err))
+				_ = c.Error(errors.WrapError(errors.ErrSinkURIInvalid, err, oldCfInfo.SinkURI))
 				return
 			}
 		}
@@ -845,7 +845,7 @@ func (h *OpenAPIV2) UpdateChangefeed(c *gin.Context) {
 	// verify sink
 	err = sink.Verify(ctx, oldCfInfo.ToChangefeedConfig(), oldCfInfo.ChangefeedID)
 	if err != nil {
-		_ = c.Error(errors.WrapError(errors.ErrSinkURIInvalid, err))
+		_ = c.Error(errors.WrapError(errors.ErrSinkURIInvalid, err, oldCfInfo.SinkURI))
 		return
 	}
 

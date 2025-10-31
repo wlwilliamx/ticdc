@@ -33,6 +33,7 @@ import (
 	"github.com/pingcap/tidb/pkg/parser"
 	"github.com/pingcap/tidb/pkg/parser/ast"
 	"github.com/pingcap/tidb/pkg/parser/format"
+
 	// NOTE: Do not remove the `test_driver` import.
 	// For details, refer to: https://github.com/pingcap/parser/issues/43
 	_ "github.com/pingcap/tidb/pkg/parser/test_driver"
@@ -206,7 +207,6 @@ func (s *EventTestHelper) DDL2Event(ddl string) *DDLEvent {
 	info := s.GetTableInfo(job)
 	return &DDLEvent{
 		SchemaID:   job.SchemaID,
-		TableID:    info.TableName.TableID,
 		SchemaName: job.SchemaName,
 		TableName:  job.TableName,
 		Query:      job.Query,

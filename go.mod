@@ -386,7 +386,6 @@ require (
 )
 
 replace (
-
 	github.com/IBM/sarama v1.41.2 => github.com/pingcap/sarama v1.41.2-pingcap-20250416
 
 	// Downgrade grpc to v1.63.2, as well as other related modules.

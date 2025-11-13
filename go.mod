@@ -56,7 +56,7 @@ require (
 	github.com/pingcap/log v1.1.1-0.20250917021125-19901e015dc9
 	github.com/pingcap/tidb v1.1.0-beta.0.20251112140053-9e38acfdbfaf
 	github.com/pingcap/tidb-dashboard v0.0.0-20240326110213-9768844ff5d7
-	github.com/pingcap/tidb/pkg/parser v0.0.0-20250925154222-93731f04705d
+	github.com/pingcap/tidb/pkg/parser v0.0.0-20251113060050-3acae2d60724
 	github.com/pingcap/tiflow v0.0.0-20250926085928-5e9d51dc0939
 	github.com/prometheus/client_golang v1.22.0
 	github.com/r3labs/diff v1.1.0
@@ -111,7 +111,6 @@ require (
 	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.4.2 // indirect
 	github.com/DataDog/zstd v1.5.5 // indirect
-	github.com/JohnCGriffin/overflow v0.0.0-20211019200055-46fa312c352c // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/VividCortex/ewma v1.2.0 // indirect
@@ -222,7 +221,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.19.1 // indirect
 	github.com/gsterjov/go-libsecret v0.0.0-20161001094733-a6f4afe4910c // indirect
-	github.com/hamba/avro/v2 v2.26.0 // indirect
+	github.com/hamba/avro/v2 v2.27.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
@@ -386,7 +385,14 @@ require (
 	sourcegraph.com/sourcegraph/appdash-data v0.0.0-20151005221446-73f23eafcf67 // indirect
 )
 
-// copy from TiDB
-replace github.com/go-ldap/ldap/v3 v3.4.4 => github.com/yangkeao/ldap/v3 v3.4.5-0.20230421065457-369a3bab1117
+replace (
 
-replace github.com/IBM/sarama v1.41.2 => github.com/pingcap/sarama v1.41.2-pingcap-20250416
+	github.com/IBM/sarama v1.41.2 => github.com/pingcap/sarama v1.41.2-pingcap-20250416
+
+	// Downgrade grpc to v1.63.2, as well as other related modules.
+	github.com/apache/arrow-go/v18 => github.com/joechenrh/arrow-go/v18 v18.0.0-20250911101656-62c34c9a3b82
+	// copy from TiDB
+	github.com/go-ldap/ldap/v3 v3.4.4 => github.com/yangkeao/ldap/v3 v3.4.5-0.20230421065457-369a3bab1117
+
+	google.golang.org/grpc v1.67.1 => google.golang.org/grpc v1.65.0
+)

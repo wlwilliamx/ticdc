@@ -21,7 +21,6 @@ import (
 	"github.com/pingcap/ticdc/downstreamadapter/sink/columnselector"
 	commonEvent "github.com/pingcap/ticdc/pkg/common/event"
 	"github.com/pingcap/ticdc/pkg/config"
-	"github.com/pingcap/ticdc/pkg/config/kerneltype"
 	"github.com/pingcap/ticdc/pkg/errors"
 	"github.com/pingcap/ticdc/pkg/sink/codec/common"
 	"github.com/pingcap/tidb/pkg/util/chunk"
@@ -1263,9 +1262,5 @@ func TestRowKey(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NotEqual(t, tidb_ext.CommitTs, 0)
-	expected := "dIAAAAAAAAByX3KAAAAAAAAAAQ=="
-	if kerneltype.IsNextGen() {
-		expected = "dIAAAAAAAAAHX3KAAAAAAAAAAQ=="
-	}
-	require.Equal(t, expected, tidb_ext.Rowkey)
+	require.Equal(t, "dIAAAAAAAABuX3KAAAAAAAAAAQ==", tidb_ext.Rowkey)
 }

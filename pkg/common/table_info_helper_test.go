@@ -18,7 +18,7 @@ import (
 
 	"github.com/pingcap/ticdc/pkg/errors"
 	"github.com/pingcap/tidb/pkg/meta/model"
-	"github.com/pingcap/tidb/pkg/parser/ast"
+	parser_model "github.com/pingcap/tidb/pkg/parser/model"
 	"github.com/pingcap/tidb/pkg/parser/mysql"
 	"github.com/pingcap/tidb/pkg/types"
 	"github.com/stretchr/testify/require"
@@ -30,7 +30,7 @@ func newColumnInfo(id int64, name string, tp byte, flag uint) *model.ColumnInfo 
 	ft.AddFlag(flag)
 	return &model.ColumnInfo{
 		ID:        id,
-		Name:      ast.NewCIStr(name),
+		Name:      parser_model.NewCIStr(name),
 		FieldType: *ft,
 		State:     model.StatePublic,
 		Version:   model.CurrLatestColumnInfoVersion,
@@ -40,7 +40,7 @@ func newColumnInfo(id int64, name string, tp byte, flag uint) *model.ColumnInfo 
 // Helper to create a model.IndexInfo
 func newIndexInfo(name string, cols []*model.IndexColumn, isPrimary, isUnique bool) *model.IndexInfo {
 	return &model.IndexInfo{
-		Name:    ast.NewCIStr(name),
+		Name:    parser_model.NewCIStr(name),
 		Columns: cols,
 		Primary: isPrimary,
 		Unique:  isUnique,
@@ -151,9 +151,9 @@ func newFieldTypeWithFlag(flags ...uint) *types.FieldType {
 
 func TestColumnIndex(t *testing.T) {
 	columns := []*model.ColumnInfo{
-		{ID: 101, Name: ast.NewCIStr("a"), FieldType: *newFieldTypeWithFlag(mysql.PriKeyFlag)},
-		{ID: 102, Name: ast.NewCIStr("b"), FieldType: *newFieldTypeWithFlag(mysql.UniqueKeyFlag)},
-		{ID: 103, Name: ast.NewCIStr("c"), FieldType: *newFieldTypeWithFlag()},
+		{ID: 101, Name: parser_model.NewCIStr("a"), FieldType: *newFieldTypeWithFlag(mysql.PriKeyFlag)},
+		{ID: 102, Name: parser_model.NewCIStr("b"), FieldType: *newFieldTypeWithFlag(mysql.UniqueKeyFlag)},
+		{ID: 103, Name: parser_model.NewCIStr("c"), FieldType: *newFieldTypeWithFlag()},
 	}
 	tableInfo := WrapTableInfo("test", &model.TableInfo{
 		PKIsHandle: true,
@@ -186,10 +186,10 @@ func TestIndexByName(t *testing.T) {
 	tableInfo = WrapTableInfo("test", &model.TableInfo{
 		Indices: []*model.IndexInfo{
 			{
-				Name: ast.NewCIStr("idx1"),
+				Name: parser_model.NewCIStr("idx1"),
 				Columns: []*model.IndexColumn{
 					{
-						Name: ast.NewCIStr("col1"),
+						Name: parser_model.NewCIStr("col1"),
 					},
 				},
 			},
@@ -221,19 +221,19 @@ func TestColumnsByNames(t *testing.T) {
 	tableInfo := WrapTableInfo("test", &model.TableInfo{
 		Columns: []*model.ColumnInfo{
 			{
-				Name: ast.NewCIStr("col2"),
+				Name: parser_model.NewCIStr("col2"),
 				ID:   1,
 			},
 			{
-				Name: ast.NewCIStr("col1"),
+				Name: parser_model.NewCIStr("col1"),
 				ID:   0,
 			},
 			{
-				Name: ast.NewCIStr("col3"),
+				Name: parser_model.NewCIStr("col3"),
 				ID:   2,
 			},
 			{
-				Name:                ast.NewCIStr("col4"),
+				Name:                parser_model.NewCIStr("col4"),
 				ID:                  3,
 				GeneratedExprString: "generated",
 			},
@@ -271,15 +271,15 @@ func TestColumnsByNames(t *testing.T) {
 func TestHandleKey(t *testing.T) {
 	tableInfo := &model.TableInfo{
 		Columns: []*model.ColumnInfo{
-			{ID: 1, Name: ast.NewCIStr("id"), Offset: 0},
-			{ID: 2, Name: ast.NewCIStr("name"), Offset: 1},
+			{ID: 1, Name: parser_model.NewCIStr("id"), Offset: 0},
+			{ID: 2, Name: parser_model.NewCIStr("name"), Offset: 1},
 		},
 		Indices: []*model.IndexInfo{
 			{
 				ID: 1,
 				Columns: []*model.IndexColumn{
-					{Name: ast.NewCIStr("id"), Offset: 0},
-					{Name: ast.NewCIStr("name"), Offset: 1},
+					{Name: parser_model.NewCIStr("id"), Offset: 0},
+					{Name: parser_model.NewCIStr("name"), Offset: 1},
 				},
 				Primary: true,
 			},
@@ -315,26 +315,26 @@ func TestGetOrSetColumnSchema_SharedSchema(t *testing.T) {
 
 	tableInfo1 := &model.TableInfo{
 		ID:             1,
-		Name:           ast.NewCIStr("test1"),
+		Name:           parser_model.NewCIStr("test1"),
 		PKIsHandle:     true,
 		IsCommonHandle: false,
 		UpdateTS:       1234567890,
 		Columns: []*model.ColumnInfo{
 			{
 				ID:        1,
-				Name:      ast.NewCIStr("id"),
+				Name:      parser_model.NewCIStr("id"),
 				Offset:    0,
 				FieldType: *idFieldType1,
 			},
 			{
 				ID:        2,
-				Name:      ast.NewCIStr("name"),
+				Name:      parser_model.NewCIStr("name"),
 				Offset:    1,
 				FieldType: *nameFieldType1,
 			},
 			{
 				ID:        3,
-				Name:      ast.NewCIStr("age"),
+				Name:      parser_model.NewCIStr("age"),
 				Offset:    2,
 				FieldType: *ageFieldType1,
 			},
@@ -342,12 +342,12 @@ func TestGetOrSetColumnSchema_SharedSchema(t *testing.T) {
 		Indices: []*model.IndexInfo{
 			{
 				ID:      1,
-				Name:    ast.NewCIStr("PRIMARY"),
+				Name:    parser_model.NewCIStr("PRIMARY"),
 				Primary: true,
 				Unique:  true,
 				Columns: []*model.IndexColumn{
 					{
-						Name:   ast.NewCIStr("id"),
+						Name:   parser_model.NewCIStr("id"),
 						Offset: 0,
 					},
 				},
@@ -375,26 +375,26 @@ func TestGetOrSetColumnSchema_SharedSchema(t *testing.T) {
 
 	tableInfo2 := &model.TableInfo{
 		ID:             2,
-		Name:           ast.NewCIStr("test2"),
+		Name:           parser_model.NewCIStr("test2"),
 		PKIsHandle:     true,
 		IsCommonHandle: false,
 		UpdateTS:       1234567890,
 		Columns: []*model.ColumnInfo{
 			{
 				ID:        1,
-				Name:      ast.NewCIStr("id"),
+				Name:      parser_model.NewCIStr("id"),
 				Offset:    0,
 				FieldType: *idFieldType2,
 			},
 			{
 				ID:        2,
-				Name:      ast.NewCIStr("name"),
+				Name:      parser_model.NewCIStr("name"),
 				Offset:    1,
 				FieldType: *nameFieldType2,
 			},
 			{
 				ID:        3,
-				Name:      ast.NewCIStr("age"),
+				Name:      parser_model.NewCIStr("age"),
 				Offset:    2,
 				FieldType: *ageFieldType2,
 			},
@@ -402,12 +402,12 @@ func TestGetOrSetColumnSchema_SharedSchema(t *testing.T) {
 		Indices: []*model.IndexInfo{
 			{
 				ID:      1,
-				Name:    ast.NewCIStr("PRIMARY"),
+				Name:    parser_model.NewCIStr("PRIMARY"),
 				Primary: true,
 				Unique:  true,
 				Columns: []*model.IndexColumn{
 					{
-						Name:   ast.NewCIStr("id"),
+						Name:   parser_model.NewCIStr("id"),
 						Offset: 0,
 					},
 				},
@@ -459,20 +459,20 @@ func TestGetOrSetColumnSchema_SharedSchema(t *testing.T) {
 
 	tableInfo3 := &model.TableInfo{
 		ID:             3,
-		Name:           ast.NewCIStr("test3"),
+		Name:           parser_model.NewCIStr("test3"),
 		PKIsHandle:     false,
 		IsCommonHandle: false,
 		UpdateTS:       1234567890,
 		Columns: []*model.ColumnInfo{
 			{
 				ID:        1,
-				Name:      ast.NewCIStr("id"),
+				Name:      parser_model.NewCIStr("id"),
 				Offset:    0,
 				FieldType: *idFieldType3,
 			},
 			{
 				ID:        2,
-				Name:      ast.NewCIStr("name"),
+				Name:      parser_model.NewCIStr("name"),
 				Offset:    1,
 				FieldType: *nameFieldType3,
 			},
@@ -492,7 +492,7 @@ func TestIsEligible(t *testing.T) {
 
 	// 1. Table with PK
 	tiWithPK := WrapTableInfo("test", &model.TableInfo{
-		Name: ast.NewCIStr("t1"),
+		Name: parser_model.NewCIStr("t1"),
 		Columns: []*model.ColumnInfo{
 			newColumnInfo(1, "id", mysql.TypeLong, mysql.PriKeyFlag),
 		},
@@ -501,29 +501,29 @@ func TestIsEligible(t *testing.T) {
 
 	// 2. Table with UK on not-null column
 	tiWithUK := WrapTableInfo("test", &model.TableInfo{
-		Name: ast.NewCIStr("t2"),
+		Name: parser_model.NewCIStr("t2"),
 		Columns: []*model.ColumnInfo{
 			newColumnInfo(1, "id", mysql.TypeLong, mysql.NotNullFlag),
 		},
 		Indices: []*model.IndexInfo{
-			newIndexInfo("uk_id", []*model.IndexColumn{{Name: ast.NewCIStr("id"), Offset: 0}}, false, true),
+			newIndexInfo("uk_id", []*model.IndexColumn{{Name: parser_model.NewCIStr("id"), Offset: 0}}, false, true),
 		},
 	})
 
 	// 3. Table with UK on nullable column (ineligible)
 	tiWithNullableUK := WrapTableInfo("test", &model.TableInfo{
-		Name: ast.NewCIStr("t3"),
+		Name: parser_model.NewCIStr("t3"),
 		Columns: []*model.ColumnInfo{
 			newColumnInfo(1, "id", mysql.TypeLong, 0),
 		},
 		Indices: []*model.IndexInfo{
-			newIndexInfo("uk_id", []*model.IndexColumn{{Name: ast.NewCIStr("id"), Offset: 0}}, false, true),
+			newIndexInfo("uk_id", []*model.IndexColumn{{Name: parser_model.NewCIStr("id"), Offset: 0}}, false, true),
 		},
 	})
 
 	// 4. Table with no PK or UK (ineligible)
 	tiNoKey := WrapTableInfo("test", &model.TableInfo{
-		Name: ast.NewCIStr("t4"),
+		Name: parser_model.NewCIStr("t4"),
 		Columns: []*model.ColumnInfo{
 			newColumnInfo(1, "id", mysql.TypeLong, 0),
 		},
@@ -531,13 +531,13 @@ func TestIsEligible(t *testing.T) {
 
 	// 5. View (eligible)
 	tiView := WrapTableInfo("test", &model.TableInfo{
-		Name: ast.NewCIStr("v1"),
+		Name: parser_model.NewCIStr("v1"),
 	})
 	tiView.View = &model.ViewInfo{}
 
 	// 6. Sequence (ineligible)
 	tiSeq := WrapTableInfo("test", &model.TableInfo{
-		Name: ast.NewCIStr("s1"),
+		Name: parser_model.NewCIStr("s1"),
 	})
 	tiSeq.Sequence = &model.SequenceInfo{}
 

@@ -24,7 +24,7 @@ import (
 	cerror "github.com/pingcap/ticdc/pkg/errors"
 	"github.com/pingcap/tidb/pkg/expression"
 	"github.com/pingcap/tidb/pkg/meta/model"
-	"github.com/pingcap/tidb/pkg/parser/ast"
+	parser_model "github.com/pingcap/tidb/pkg/parser/model"
 	"github.com/pingcap/tidb/pkg/sessionctx"
 	"github.com/pingcap/tidb/pkg/table"
 	"github.com/pingcap/tidb/pkg/types"
@@ -331,7 +331,7 @@ func (r *dmlExprFilterRule) buildRowWithVirtualColumns(
 
 	columns, _, err := expression.ColumnInfos2ColumnsAndNames(
 		r.sessCtx.GetExprCtx(),
-		ast.CIStr{}, /* unused */
+		parser_model.CIStr{}, /* unused */
 		tableInfo.GetTableNameCIStr(),
 		tableInfo.GetColumns(),
 		tableInfo.ToTiDBTableInfo())

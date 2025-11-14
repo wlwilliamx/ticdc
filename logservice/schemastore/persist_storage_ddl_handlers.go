@@ -25,6 +25,7 @@ import (
 	"github.com/pingcap/tidb/pkg/meta/model"
 	"github.com/pingcap/tidb/pkg/parser"
 	"github.com/pingcap/tidb/pkg/parser/ast"
+	parser_model "github.com/pingcap/tidb/pkg/parser/model"
 	"go.uber.org/zap"
 )
 
@@ -1395,7 +1396,7 @@ func extractTableInfoFuncForExchangeTablePartition(event *PersistedDDLEvent, tab
 	columnSchema := event.ExtraTableInfo.ShadowCopyColumnSchema()
 	tableInfo := common.NewTableInfo(
 		event.SchemaName,
-		ast.NewCIStr(event.TableName).O,
+		parser_model.NewCIStr(event.TableName).O,
 		tableID,
 		false,
 		columnSchema,
@@ -2361,7 +2362,7 @@ func buildDDLEventForExchangeTablePartition(rawEvent *PersistedDDLEvent, tableFi
 		if isNormalTableAfterExchange {
 			ddlEvent.TableInfo = common.NewTableInfo(
 				rawEvent.ExtraSchemaName,
-				ast.NewCIStr(rawEvent.ExtraTableName).O,
+				parser_model.NewCIStr(rawEvent.ExtraTableName).O,
 				tableID,
 				false,
 				rawEvent.ExtraTableInfo.ShadowCopyColumnSchema(),

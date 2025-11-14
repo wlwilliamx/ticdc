@@ -22,8 +22,8 @@ import (
 	"github.com/pingcap/ticdc/heartbeatpb"
 	"github.com/pingcap/ticdc/pkg/config/kerneltype"
 	cerror "github.com/pingcap/ticdc/pkg/errors"
+	"github.com/pingcap/tidb/pkg/ddl"
 	"github.com/pingcap/tidb/pkg/kv"
-	"github.com/pingcap/tidb/pkg/meta/metadef"
 	"github.com/pingcap/tidb/pkg/tablecodec"
 	"github.com/pingcap/tidb/pkg/util/codec"
 	"github.com/tikv/client-go/v2/tikv"
@@ -32,9 +32,9 @@ import (
 
 const (
 	// JobTableID is the id of `tidb_ddl_job`.
-	JobTableID = metadef.TiDBDDLJobTableID
+	JobTableID = ddl.JobTableID
 	// JobHistoryID is the id of `tidb_ddl_history`
-	JobHistoryID = metadef.TiDBDDLHistoryTableID
+	JobHistoryID = ddl.HistoryTableID
 )
 
 // TableIDToComparableSpan converts a TableID to a Span whose

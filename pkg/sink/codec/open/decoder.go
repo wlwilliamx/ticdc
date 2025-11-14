@@ -30,7 +30,7 @@ import (
 	"github.com/pingcap/ticdc/pkg/util"
 	"github.com/pingcap/tidb/br/pkg/storage"
 	timodel "github.com/pingcap/tidb/pkg/meta/model"
-	"github.com/pingcap/tidb/pkg/parser/ast"
+	parser_model "github.com/pingcap/tidb/pkg/parser/model"
 	"github.com/pingcap/tidb/pkg/parser/mysql"
 	"github.com/pingcap/tidb/pkg/parser/types"
 	"github.com/pingcap/tidb/pkg/util/chunk"
@@ -334,7 +334,7 @@ func (b *decoder) newTableInfo(key *messageKey, value *messageRow) *commonType.T
 	key.Partition = &physicalTableID
 	tableInfo := new(timodel.TableInfo)
 	tableInfo.ID = *key.Partition
-	tableInfo.Name = ast.NewCIStr(key.Table)
+	tableInfo.Name = parser_model.NewCIStr(key.Table)
 
 	var rawColumns map[string]column
 	if value.Update != nil {
@@ -376,7 +376,7 @@ func newTiColumns(rawColumns map[string]column) []*timodel.ColumnInfo {
 		raw := pair.column
 		col := new(timodel.ColumnInfo)
 		col.ID = nextColumnID
-		col.Name = ast.NewCIStr(name)
+		col.Name = parser_model.NewCIStr(name)
 		col.FieldType = *types.NewFieldType(raw.Type)
 
 		if isPrimary(raw.Flag) || isHandle(raw.Flag) {
@@ -445,7 +445,7 @@ func newTiIndices(columns []*timodel.ColumnInfo) []*timodel.IndexInfo {
 			})
 			indices = append(indices, &timodel.IndexInfo{
 				ID:      1,
-				Name:    ast.NewCIStr("primary"),
+				Name:    parser_model.NewCIStr("primary"),
 				Columns: indexColumns,
 				Primary: true,
 				Unique:  true,
@@ -458,7 +458,7 @@ func newTiIndices(columns []*timodel.ColumnInfo) []*timodel.IndexInfo {
 			})
 			indices = append(indices, &timodel.IndexInfo{
 				ID:      1 + int64(len(indices)),
-				Name:    ast.NewCIStr(col.Name.O + "_idx"),
+				Name:    parser_model.NewCIStr(col.Name.O + "_idx"),
 				Columns: indexColumns,
 				Unique:  true,
 			})
@@ -474,7 +474,7 @@ func newTiIndices(columns []*timodel.ColumnInfo) []*timodel.IndexInfo {
 	if len(multiColumns) != 0 {
 		indices = append(indices, &timodel.IndexInfo{
 			ID:      1 + int64(len(indices)),
-			Name:    ast.NewCIStr("multi_idx"),
+			Name:    parser_model.NewCIStr("multi_idx"),
 			Columns: multiColumns,
 			Unique:  false,
 		})

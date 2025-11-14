@@ -28,13 +28,13 @@ import (
 	"github.com/pingcap/tidb/pkg/util/engine"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	pd "github.com/tikv/pd/client"
-	pdopt "github.com/tikv/pd/client/opt"
+	pdclient "github.com/tikv/pd/client"
+	pdopt "github.com/tikv/pd/client"
 	"github.com/tikv/pd/pkg/utils/tempurl"
 )
 
 type mockPDClient struct {
-	pd.Client
+	pdclient.Client
 	getAllStores  func() []*metapb.Store
 	getPDVersion  func() string
 	getStatusCode func() int

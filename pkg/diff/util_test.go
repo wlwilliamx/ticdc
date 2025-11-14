@@ -17,7 +17,7 @@ import (
 	"github.com/pingcap/check"
 	"github.com/pingcap/tidb/pkg/meta/model"
 	"github.com/pingcap/tidb/pkg/parser"
-	pmodel "github.com/pingcap/tidb/pkg/parser/ast"
+	parser_model "github.com/pingcap/tidb/pkg/parser/model"
 	"github.com/pingcap/tidb/pkg/util/dbutil"
 	"github.com/pingcap/tidb/pkg/util/dbutil/dbutiltest"
 )
@@ -59,11 +59,11 @@ func (s *testUtilSuite) TestRowContainsCols(c *check.C) {
 
 	cols := []*model.ColumnInfo{
 		{
-			Name: pmodel.NewCIStr("a"),
+			Name: parser_model.NewCIStr("a"),
 		}, {
-			Name: pmodel.NewCIStr("b"),
+			Name: parser_model.NewCIStr("b"),
 		}, {
-			Name: pmodel.NewCIStr("c"),
+			Name: parser_model.NewCIStr("c"),
 		},
 	}
 

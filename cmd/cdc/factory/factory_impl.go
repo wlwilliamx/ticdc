@@ -24,8 +24,8 @@ import (
 	"github.com/pingcap/ticdc/pkg/errors"
 	"github.com/pingcap/ticdc/pkg/etcd"
 	"github.com/pingcap/ticdc/pkg/version"
-	pd "github.com/tikv/pd/client"
-	pdopt "github.com/tikv/pd/client/opt"
+	pdclient "github.com/tikv/pd/client"
+	pdopt "github.com/tikv/pd/client"
 	etcdlogutil "go.etcd.io/etcd/client/pkg/v3/logutil"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
@@ -115,7 +115,7 @@ func (f *factoryImpl) EtcdClient() (*etcd.CDCEtcdClientImpl, error) {
 }
 
 // PdClient creates new pd client.
-func (f *factoryImpl) PdClient() (pd.Client, error) {
+func (f *factoryImpl) PdClient() (pdclient.Client, error) {
 	ctx := context.Background()
 
 	credential := f.GetCredential()
@@ -136,8 +136,8 @@ func (f *factoryImpl) PdClient() (pd.Client, error) {
 		}
 	}
 
-	pdClient, err := pd.NewClientWithContext(
-		ctx, "cdc-factory", pdEndpoints, credential.PDSecurityOption(),
+	pdClient, err := pdopt.NewClientWithContext(
+		ctx, pdEndpoints, credential.PDSecurityOption(),
 		pdopt.WithMaxErrorRetry(maxGetPDClientRetryTimes),
 		// TODO(hi-rustin): add gRPC metrics to Options.
 		// See also: https://github.com/pingcap/tiflow/pull/2341#discussion_r673032407.

@@ -31,7 +31,7 @@ import (
 	"github.com/pingcap/ticdc/pkg/redo/writer"
 	"github.com/pingcap/ticdc/pkg/redo/writer/file"
 	"github.com/pingcap/tidb/pkg/meta/model"
-	"github.com/pingcap/tidb/pkg/parser/ast"
+	parser_model "github.com/pingcap/tidb/pkg/parser/model"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
@@ -57,7 +57,7 @@ func genLogFile(
 			event := &pevent.RedoRowEvent{
 				CommitTs: ts,
 				TableInfo: common.NewTableInfo4Decoder("test", &model.TableInfo{
-					Name: ast.NewCIStr("t"),
+					Name: parser_model.NewCIStr("t"),
 				}),
 			}
 			log := event.ToRedoLog()

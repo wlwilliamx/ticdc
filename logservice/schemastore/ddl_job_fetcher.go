@@ -25,9 +25,9 @@ import (
 	"github.com/pingcap/ticdc/pkg/common/event"
 	"github.com/pingcap/ticdc/pkg/errors"
 	"github.com/pingcap/ticdc/utils/heap"
+	"github.com/pingcap/tidb/pkg/ddl"
 	"github.com/pingcap/tidb/pkg/kv"
 	"github.com/pingcap/tidb/pkg/meta"
-	"github.com/pingcap/tidb/pkg/meta/metadef"
 	"github.com/pingcap/tidb/pkg/meta/model"
 	"github.com/pingcap/tidb/pkg/parser/mysql"
 	"go.uber.org/zap"
@@ -259,9 +259,9 @@ func findColumnByName(cols []*model.ColumnInfo, name string) (*model.ColumnInfo,
 
 const (
 	// JobTableID is the id of `tidb_ddl_job`.
-	JobTableID = metadef.TiDBDDLJobTableID
+	JobTableID = ddl.JobTableID
 	// JobHistoryID is the id of `tidb_ddl_history`
-	JobHistoryID = metadef.TiDBDDLHistoryTableID
+	JobHistoryID = ddl.HistoryTableID
 )
 
 func getAllDDLSpan(keyspaceID uint32) ([]heartbeatpb.TableSpan, error) {

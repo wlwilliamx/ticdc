@@ -115,7 +115,7 @@ func addLock(ctx context.Context, cfg *util.Config) error {
 	}
 
 	pdcli, err := pd.NewClientWithContext(
-		ctx, "cdc-test-resolve-lock", strings.Split(cfg.PDAddr, ","), pd.SecurityOption{})
+		ctx, strings.Split(cfg.PDAddr, ","), pd.SecurityOption{})
 	if err != nil {
 		return errors.Trace(err)
 	}

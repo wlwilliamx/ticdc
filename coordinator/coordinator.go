@@ -24,7 +24,6 @@ import (
 	"github.com/pingcap/ticdc/pkg/common"
 	appcontext "github.com/pingcap/ticdc/pkg/common/context"
 	"github.com/pingcap/ticdc/pkg/config"
-	"github.com/pingcap/ticdc/pkg/config/kerneltype"
 	"github.com/pingcap/ticdc/pkg/errors"
 	"github.com/pingcap/ticdc/pkg/messaging"
 	"github.com/pingcap/ticdc/pkg/metrics"
@@ -450,44 +449,10 @@ func (c *coordinator) updateGlobalGcSafepoint(ctx context.Context) error {
 	return errors.Trace(err)
 }
 
-func (c *coordinator) updateAllKeyspaceGcBarriers(ctx context.Context) error {
-	barrierMap := c.controller.calculateKeyspaceGCBarrier()
-
-	for meta, barrierTS := range barrierMap {
-		err := c.updateKeyspaceGcBarrier(ctx, meta, barrierTS)
-		if err != nil {
-			return errors.Trace(err)
-		}
-	}
-
-	return nil
-}
-
-func (c *coordinator) updateKeyspaceGcBarrier(ctx context.Context, meta common.KeyspaceMeta, barrierTS uint64) error {
-	barrierTsUpperBound := barrierTS - 1
-	err := c.gcManager.TryUpdateKeyspaceGCBarrier(ctx, meta.ID, meta.Name, barrierTsUpperBound, false)
-	return errors.Trace(err)
-}
-
 // updateGCSafepointByChangefeed update the gc safepoint by changefeed
 // On next gen, we should update the gc barrier for the specific keyspace
 // Otherwise we should update the global gc safepoint
 func (c *coordinator) updateGCSafepointByChangefeed(ctx context.Context, changefeedID common.ChangeFeedID) error {
-	if kerneltype.IsNextGen() {
-		barrierMap := c.controller.calculateKeyspaceGCBarrier()
-
-		cfInfo, _, err := c.GetChangefeed(ctx, changefeedID.DisplayName)
-		if err != nil {
-			return err
-		}
-
-		meta := common.KeyspaceMeta{
-			ID:   cfInfo.KeyspaceID,
-			Name: changefeedID.Keyspace(),
-		}
-
-		return c.updateKeyspaceGcBarrier(ctx, meta, barrierMap[meta])
-	}
 	return c.updateGlobalGcSafepoint(ctx)
 }
 
@@ -495,9 +460,6 @@ func (c *coordinator) updateGCSafepointByChangefeed(ctx context.Context, changef
 // On next gen, we should update the gc barrier for all keyspaces
 // Otherwise we should update the global gc safepoint
 func (c *coordinator) updateGCSafepoint(ctx context.Context) error {
-	if kerneltype.IsNextGen() {
-		return c.updateAllKeyspaceGcBarriers(ctx)
-	}
 	return c.updateGlobalGcSafepoint(ctx)
 }
 

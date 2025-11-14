@@ -25,7 +25,7 @@ import (
 	"github.com/pingcap/log"
 	"github.com/pingcap/ticdc/pkg/errors"
 	"github.com/pingcap/tidb/pkg/meta/model"
-	"github.com/pingcap/tidb/pkg/parser/ast"
+	parser_model "github.com/pingcap/tidb/pkg/parser/model"
 	"github.com/pingcap/tidb/pkg/parser/mysql"
 	"github.com/pingcap/tidb/pkg/types"
 	"github.com/pingcap/tidb/pkg/util/rowcodec"
@@ -296,8 +296,8 @@ func (ti *TableInfo) GetTableName() string {
 	return ti.TableName.Table
 }
 
-func (ti *TableInfo) GetTableNameCIStr() ast.CIStr {
-	return ast.NewCIStr(ti.TableName.Table)
+func (ti *TableInfo) GetTableNameCIStr() parser_model.CIStr {
+	return parser_model.NewCIStr(ti.TableName.Table)
 }
 
 // GetSchemaNamePtr returns the pointer to the schema name of the table
@@ -515,7 +515,7 @@ func (ti *TableInfo) IsHandleKey(colID int64) bool {
 func (ti *TableInfo) ToTiDBTableInfo() *model.TableInfo {
 	return &model.TableInfo{
 		ID:         ti.TableName.TableID,
-		Name:       ast.NewCIStr(ti.TableName.Table),
+		Name:       parser_model.NewCIStr(ti.TableName.Table),
 		Charset:    ti.Charset,
 		Collate:    ti.Collate,
 		Comment:    ti.Comment,

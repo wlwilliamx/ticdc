@@ -31,13 +31,13 @@ import (
 	"github.com/pingcap/tidb/pkg/meta"
 	timodel "github.com/pingcap/tidb/pkg/meta/model"
 	"github.com/pingcap/tidb/pkg/parser"
-	"github.com/pingcap/tidb/pkg/parser/ast"
 	"github.com/pingcap/tidb/pkg/parser/format"
+	parser_model "github.com/pingcap/tidb/pkg/parser/model"
+
 	// NOTE: Do not remove the `test_driver` import.
 	// For details, refer to: https://github.com/pingcap/parser/issues/43
 	_ "github.com/pingcap/tidb/pkg/parser/test_driver"
 	"github.com/pingcap/tidb/pkg/session"
-	"github.com/pingcap/tidb/pkg/sessionctx/vardef"
 	"github.com/pingcap/tidb/pkg/store/mockstore"
 	"github.com/pingcap/tidb/pkg/testkit"
 	"github.com/pingcap/tidb/pkg/util/chunk"
@@ -70,7 +70,7 @@ func NewEventTestHelperWithTimeZone(t testing.TB, tz *time.Location) *EventTestH
 	ticonfig.UpdateGlobal(func(conf *ticonfig.Config) {
 		conf.AlterPrimaryKey = true
 	})
-	vardef.SetSchemaLease(time.Second)
+	session.SetSchemaLease(time.Second)
 	session.DisableStats4Test()
 	domain, err := session.BootstrapSession(store)
 	require.NoError(t, err)
@@ -181,13 +181,13 @@ func (s *EventTestHelper) DDL2Job(ddl string) *timodel.Job {
 	for i := 0; i < tableNum; i++ {
 		oldTableIDs[i] = res.BinlogInfo.MultipleTableInfos[i].ID
 	}
-	newTableNames := make([]ast.CIStr, tableNum)
+	newTableNames := make([]parser_model.CIStr, tableNum)
 	for i := 0; i < tableNum; i++ {
 		newTableNames[i] = res.BinlogInfo.MultipleTableInfos[i].Name
 	}
-	oldSchemaNames := make([]ast.CIStr, tableNum)
+	oldSchemaNames := make([]parser_model.CIStr, tableNum)
 	for i := 0; i < tableNum; i++ {
-		oldSchemaNames[i] = ast.NewCIStr(schema)
+		oldSchemaNames[i] = parser_model.NewCIStr(schema)
 	}
 	newSchemaIDs := oldSchemaIDs
 

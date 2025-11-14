@@ -22,7 +22,7 @@ import (
 	"github.com/pingcap/ticdc/pkg/common"
 	"github.com/pingcap/ticdc/pkg/config"
 	"github.com/pingcap/tidb/pkg/meta/model"
-	"github.com/pingcap/tidb/pkg/parser/ast"
+	parser_model "github.com/pingcap/tidb/pkg/parser/model"
 	"github.com/pingcap/tidb/pkg/parser/mysql"
 	"github.com/pingcap/tidb/pkg/types"
 	"github.com/pingcap/tidb/pkg/util/chunk"
@@ -35,7 +35,7 @@ func newColumnInfo(id int64, name string, tp byte, flag uint) *model.ColumnInfo 
 	ft.AddFlag(flag)
 	return &model.ColumnInfo{
 		ID:        id,
-		Name:      ast.NewCIStr(name),
+		Name:      parser_model.NewCIStr(name),
 		FieldType: *ft,
 		State:     model.StatePublic,
 		Version:   model.CurrLatestColumnInfoVersion,
@@ -46,7 +46,7 @@ func newColumnInfo(id int64, name string, tp byte, flag uint) *model.ColumnInfo 
 func mustNewCommonTableInfo(schema, table string, cols []*model.ColumnInfo, indices []*model.IndexInfo) *common.TableInfo {
 	ti := &model.TableInfo{
 		ID:      time.Now().UnixNano(),
-		Name:    ast.NewCIStr(table),
+		Name:    parser_model.NewCIStr(table),
 		Columns: cols,
 		Indices: indices,
 		State:   model.StatePublic,
@@ -71,7 +71,7 @@ func mustNewCommonTableInfo(schema, table string, cols []*model.ColumnInfo, indi
 func mustNewModelTableInfo(table string, cols []*model.ColumnInfo, indices []*model.IndexInfo) *model.TableInfo {
 	ti := &model.TableInfo{
 		ID:      time.Now().UnixNano(),
-		Name:    ast.NewCIStr(table),
+		Name:    parser_model.NewCIStr(table),
 		Columns: cols,
 		Indices: indices,
 		State:   model.StatePublic,
@@ -95,7 +95,7 @@ func mustNewModelTableInfo(table string, cols []*model.ColumnInfo, indices []*mo
 // Helper to create a model.IndexInfo
 func newIndexInfo(name string, cols []*model.IndexColumn, isPrimary, isUnique bool) *model.IndexInfo {
 	return &model.IndexInfo{
-		Name:    ast.NewCIStr(name),
+		Name:    parser_model.NewCIStr(name),
 		Columns: cols,
 		Primary: isPrimary,
 		Unique:  isUnique,
@@ -557,7 +557,7 @@ func TestIsEligible(t *testing.T) {
 			newColumnInfo(1, "id", mysql.TypeLong, mysql.NotNullFlag),
 		},
 		[]*model.IndexInfo{
-			newIndexInfo("uk_id", []*model.IndexColumn{{Name: ast.NewCIStr("id"), Offset: 0}}, false, true),
+			newIndexInfo("uk_id", []*model.IndexColumn{{Name: parser_model.NewCIStr("id"), Offset: 0}}, false, true),
 		})
 
 	// 3. Table with UK on nullable column (ineligible)
@@ -566,7 +566,7 @@ func TestIsEligible(t *testing.T) {
 			newColumnInfo(1, "id", mysql.TypeLong, 0),
 		},
 		[]*model.IndexInfo{
-			newIndexInfo("uk_id", []*model.IndexColumn{{Name: ast.NewCIStr("id"), Offset: 0}}, false, true),
+			newIndexInfo("uk_id", []*model.IndexColumn{{Name: parser_model.NewCIStr("id"), Offset: 0}}, false, true),
 		})
 
 	// 4. Table with no PK or UK (ineligible)

@@ -27,7 +27,7 @@ import (
 	"github.com/pingcap/ticdc/pkg/config"
 	"github.com/pingcap/ticdc/pkg/filter"
 	"github.com/pingcap/tidb/pkg/meta/model"
-	"github.com/pingcap/tidb/pkg/parser/ast"
+	parser_model "github.com/pingcap/tidb/pkg/parser/model"
 	"github.com/pingcap/tidb/pkg/parser/mysql"
 	"github.com/pingcap/tidb/pkg/types"
 	"go.uber.org/zap"
@@ -162,28 +162,28 @@ func newEligibleTableInfoForTest(tableID int64, tableName string) *model.TableIn
 	// add a mock pk column
 	tableInfo := &model.TableInfo{
 		ID:   tableID,
-		Name: ast.NewCIStr(tableName),
+		Name: parser_model.NewCIStr(tableName),
 		Columns: []*model.ColumnInfo{
 			{
 				ID:        1,
-				Name:      ast.NewCIStr("a"),
+				Name:      parser_model.NewCIStr("a"),
 				Offset:    0,
 				FieldType: *types.NewFieldType(mysql.TypeLong),
 			},
 			{
 				ID:        2,
-				Name:      ast.NewCIStr("b"),
+				Name:      parser_model.NewCIStr("b"),
 				Offset:    1,
 				FieldType: *types.NewFieldType(mysql.TypeLong),
 			},
 		},
 		Indices: []*model.IndexInfo{
 			{
-				Name:    ast.NewCIStr("PRIMARY"),
+				Name:    parser_model.NewCIStr("PRIMARY"),
 				Primary: true,
 				Unique:  true,
 				Columns: []*model.IndexColumn{
-					{Name: ast.NewCIStr("a"), Offset: 0},
+					{Name: parser_model.NewCIStr("a"), Offset: 0},
 				},
 			},
 		},
@@ -231,7 +231,7 @@ func buildCreateSchemaJobForTest(schemaID int64, schemaName string, finishedTs u
 		BinlogInfo: &model.HistoryInfo{
 			DBInfo: &model.DBInfo{
 				ID:   schemaID,
-				Name: ast.NewCIStr(schemaName),
+				Name: parser_model.NewCIStr(schemaName),
 			},
 			FinishedTS: finishedTs,
 		},
@@ -346,9 +346,9 @@ func buildRenameTablesJobForTest(
 			OldSchemaID:   oldSchemaIDs[i],
 			NewSchemaID:   newSchemaIDs[i],
 			TableID:       tableIDs[i],
-			NewTableName:  ast.NewCIStr(newTableNames[i]),
-			OldSchemaName: ast.NewCIStr(oldSchemaNames[i]),
-			OldTableName:  ast.NewCIStr(oldTableNames[i]),
+			NewTableName:  parser_model.NewCIStr(newTableNames[i]),
+			OldSchemaName: parser_model.NewCIStr(oldSchemaNames[i]),
+			OldTableName:  parser_model.NewCIStr(oldTableNames[i]),
 		})
 		multiTableInfos = append(multiTableInfos, newEligibleTableInfoForTest(tableIDs[i], newTableNames[i]))
 	}

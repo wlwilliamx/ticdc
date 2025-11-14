@@ -22,7 +22,7 @@ import (
 	commonEvent "github.com/pingcap/ticdc/pkg/common/event"
 	"github.com/pingcap/ticdc/pkg/sink/codec/common"
 	timodel "github.com/pingcap/tidb/pkg/meta/model"
-	"github.com/pingcap/tidb/pkg/parser/ast"
+	parser_model "github.com/pingcap/tidb/pkg/parser/model"
 	"github.com/pingcap/tidb/pkg/util/chunk"
 	canal "github.com/pingcap/tiflow/proto/canal"
 	"go.uber.org/zap"
@@ -162,7 +162,7 @@ func newTableInfo(msg canalJSONMessageInterface) *commonType.TableInfo {
 	schemaName := *msg.getSchema()
 	tableName := *msg.getTable()
 	tableInfo := new(timodel.TableInfo)
-	tableInfo.Name = ast.NewCIStr(tableName)
+	tableInfo.Name = parser_model.NewCIStr(tableName)
 
 	columns := newTiColumns(msg)
 	tableInfo.Columns = columns

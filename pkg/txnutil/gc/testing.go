@@ -19,13 +19,13 @@ import (
 
 	"github.com/pingcap/kvproto/pkg/metapb"
 	"github.com/tikv/client-go/v2/oracle"
-	pd "github.com/tikv/pd/client"
-	pdopt "github.com/tikv/pd/client/opt"
+	pdclient "github.com/tikv/pd/client"
+	pdopt "github.com/tikv/pd/client"
 )
 
 // MockPDClient mocks pd.Client to facilitate unit testing.
 type MockPDClient struct {
-	pd.Client
+	pdclient.Client
 	ClusterID        uint64
 	GetAllStoresFunc func(ctx context.Context, opts ...pdopt.GetStoreOption) ([]*metapb.Store, error)
 
@@ -62,8 +62,8 @@ func (m *MockPDClient) GetAllStores(
 func (m *MockPDClient) LoadGlobalConfig(
 	ctx context.Context,
 	names []string, configPath string,
-) ([]pd.GlobalConfigItem, int64, error) {
-	return []pd.GlobalConfigItem{
+) ([]pdopt.GlobalConfigItem, int64, error) {
+	return []pdopt.GlobalConfigItem{
 		{
 			Name:  "source_id",
 			Value: "1",

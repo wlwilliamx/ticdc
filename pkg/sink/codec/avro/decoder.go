@@ -29,7 +29,7 @@ import (
 	"github.com/pingcap/ticdc/pkg/integrity"
 	"github.com/pingcap/ticdc/pkg/sink/codec/common"
 	timodel "github.com/pingcap/tidb/pkg/meta/model"
-	"github.com/pingcap/tidb/pkg/parser/ast"
+	parser_model "github.com/pingcap/tidb/pkg/parser/model"
 	"github.com/pingcap/tidb/pkg/parser/mysql"
 	"github.com/pingcap/tidb/pkg/types"
 	"github.com/pingcap/tidb/pkg/util/chunk"
@@ -239,7 +239,7 @@ func assembleEvent(
 
 		tiCol := &timodel.ColumnInfo{
 			ID:    int64(idx),
-			Name:  ast.NewCIStr(colName),
+			Name:  parser_model.NewCIStr(colName),
 			State: timodel.StatePublic,
 		}
 		tiCol.SetType(mysqlType)
@@ -290,7 +290,7 @@ func newTableInfo(schemaName, tableName string, columns []*timodel.ColumnInfo, k
 	tidbTableInfo := new(timodel.TableInfo)
 	tidbTableInfo.ID = tableIDAllocator.Allocate(schemaName, tableName)
 	tableIDAllocator.AddBlockTableID(schemaName, tableName, tidbTableInfo.ID)
-	tidbTableInfo.Name = ast.NewCIStr(tableName)
+	tidbTableInfo.Name = parser_model.NewCIStr(tableName)
 	tidbTableInfo.Columns = columns
 	indexColumns := make([]*timodel.IndexColumn, 0)
 	for _, col := range columns {
@@ -302,7 +302,7 @@ func newTableInfo(schemaName, tableName string, columns []*timodel.ColumnInfo, k
 	}
 	tidbTableInfo.Indices = []*timodel.IndexInfo{{
 		Primary: true,
-		Name:    ast.NewCIStr("primary"),
+		Name:    parser_model.NewCIStr("primary"),
 		Columns: indexColumns,
 		State:   timodel.StatePublic,
 	}}

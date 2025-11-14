@@ -23,7 +23,7 @@ import (
 	"github.com/pingcap/log"
 	"github.com/pingcap/ticdc/heartbeatpb"
 	"github.com/pingcap/ticdc/pkg/errors"
-	"github.com/pingcap/tidb/pkg/util/naming"
+	"github.com/pingcap/tidb/pkg/util/servicescope"
 	"go.uber.org/zap"
 )
 
@@ -281,7 +281,7 @@ func ValidateChangefeedID(changefeedID string) error {
 
 // ValidateKeyspace use the naming rules of TiDB to check the validation of the keyspace
 func ValidateKeyspace(keyspace string) error {
-	return errors.Trace(naming.CheckKeyspaceName(keyspace))
+	return errors.Trace(servicescope.CheckServiceScope(keyspace))
 }
 
 func NewChangefeedID4Test(keyspace, name string) ChangeFeedID {

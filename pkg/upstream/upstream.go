@@ -34,8 +34,8 @@ import (
 	"github.com/pingcap/tidb/pkg/store/driver"
 	tikvconfig "github.com/tikv/client-go/v2/config"
 	"github.com/tikv/client-go/v2/tikv"
-	pd "github.com/tikv/pd/client"
-	pdopt "github.com/tikv/pd/client/opt"
+	pdclient "github.com/tikv/pd/client"
+	pdopt "github.com/tikv/pd/client"
 	uatomic "github.com/uber-go/atomic"
 	clientV3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/concurrency"
@@ -66,7 +66,7 @@ type Upstream struct {
 
 	PdEndpoints    []string
 	SecurityConfig *security.Credential
-	PDClient       pd.Client
+	PDClient       pdclient.Client
 	etcdCli        etcd.Client
 	session        *concurrency.Session
 
@@ -153,8 +153,8 @@ func initUpstream(ctx context.Context, up *Upstream, cfg *NodeTopologyCfg) error
 	initGlobalConfig(up.SecurityConfig)
 	// default upstream always use the pdClient pass from cdc server
 	if !up.isDefaultUpstream {
-		up.PDClient, err = pd.NewClientWithContext(
-			ctx, "cdc-upstream", up.PdEndpoints, up.SecurityConfig.PDSecurityOption(),
+		up.PDClient, err = pdopt.NewClientWithContext(
+			ctx, up.PdEndpoints, up.SecurityConfig.PDSecurityOption(),
 			// the default `timeout` is 3s, maybe too small if the pd is busy,
 			// set to 10s to avoid frequent timeout.
 			pdopt.WithCustomTimeoutOption(10*time.Second),

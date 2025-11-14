@@ -18,7 +18,7 @@ import (
 
 	"github.com/pingcap/ticdc/pkg/config"
 	"github.com/pingcap/tidb/pkg/meta/model"
-	"github.com/pingcap/tidb/pkg/parser/ast"
+	parser_model "github.com/pingcap/tidb/pkg/parser/model"
 	"github.com/stretchr/testify/require"
 )
 
@@ -80,13 +80,13 @@ func TestColumnSelectorGetSelector(t *testing.T) {
 		selector := selectors.Get("test", "t1")
 		columns := []*model.ColumnInfo{
 			{
-				Name: ast.NewCIStr("a"),
+				Name: parser_model.NewCIStr("a"),
 			},
 			{
-				Name: ast.NewCIStr("b"),
+				Name: parser_model.NewCIStr("b"),
 			},
 			{
-				Name: ast.NewCIStr("c"),
+				Name: parser_model.NewCIStr("c"),
 			},
 		}
 		for _, col := range columns {
@@ -102,13 +102,13 @@ func TestColumnSelectorGetSelector(t *testing.T) {
 		selector := selectors.Get("test1", "aaa")
 		columns := []*model.ColumnInfo{
 			{
-				Name: ast.NewCIStr("a"),
+				Name: parser_model.NewCIStr("a"),
 			},
 			{
-				Name: ast.NewCIStr("b"),
+				Name: parser_model.NewCIStr("b"),
 			},
 			{
-				Name: ast.NewCIStr("c"),
+				Name: parser_model.NewCIStr("c"),
 			},
 		}
 		for _, col := range columns {
@@ -124,13 +124,13 @@ func TestColumnSelectorGetSelector(t *testing.T) {
 		selector := selectors.Get("test2", "t2")
 		columns := []*model.ColumnInfo{
 			{
-				Name: ast.NewCIStr("a"),
+				Name: parser_model.NewCIStr("a"),
 			},
 			{
-				Name: ast.NewCIStr("col2"),
+				Name: parser_model.NewCIStr("col2"),
 			},
 			{
-				Name: ast.NewCIStr("col1"),
+				Name: parser_model.NewCIStr("col1"),
 			},
 		}
 		for _, col := range columns {
@@ -146,13 +146,13 @@ func TestColumnSelectorGetSelector(t *testing.T) {
 		selector := selectors.Get("test3", "t3")
 		columns := []*model.ColumnInfo{
 			{
-				Name: ast.NewCIStr("a"),
+				Name: parser_model.NewCIStr("a"),
 			},
 			{
-				Name: ast.NewCIStr("col2"),
+				Name: parser_model.NewCIStr("col2"),
 			},
 			{
-				Name: ast.NewCIStr("col1"),
+				Name: parser_model.NewCIStr("col1"),
 			},
 		}
 		for _, col := range columns {
@@ -168,13 +168,13 @@ func TestColumnSelectorGetSelector(t *testing.T) {
 		selector := selectors.Get("test4", "t4")
 		columns := []*model.ColumnInfo{
 			{
-				Name: ast.NewCIStr("a"),
+				Name: parser_model.NewCIStr("a"),
 			},
 			{
-				Name: ast.NewCIStr("col2"),
+				Name: parser_model.NewCIStr("col2"),
 			},
 			{
-				Name: ast.NewCIStr("col1"),
+				Name: parser_model.NewCIStr("col1"),
 			},
 		}
 		for _, col := range columns {

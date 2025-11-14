@@ -85,29 +85,7 @@ func (k *manager) LoadKeyspace(ctx context.Context, keyspace string) (*keyspacep
 }
 
 func (k *manager) GetKeyspaceByID(ctx context.Context, keyspaceID uint32) (*keyspacepb.KeyspaceMeta, error) {
-	if kerneltype.IsClassic() {
-		return defaultKeyspaceMeta, nil
-	}
-
-	var meta *keyspacepb.KeyspaceMeta
-	var err error
-
-	pdAPIClient := appcontext.GetService[pdutil.PDAPIClient](appcontext.PDAPIClient)
-	err = retry.Do(ctx, func() error {
-		meta, err = pdAPIClient.GetKeyspaceMetaByID(ctx, keyspaceID)
-		if err != nil {
-			return err
-		}
-		return nil
-	}, retry.WithBackoffBaseDelay(500),
-		retry.WithBackoffMaxDelay(1000),
-		retry.WithMaxTries(6))
-	if err != nil {
-		log.Error("retry to load keyspace from pd", zap.Uint32("keyspaceID", keyspaceID), zap.Error(err))
-		return nil, errors.Trace(err)
-	}
-
-	return meta, nil
+	return defaultKeyspaceMeta, nil
 }
 
 func (k *manager) GetStorage(ctx context.Context, keyspace string) (kv.Storage, error) {
@@ -136,7 +114,7 @@ func (k *manager) Close() {
 	for _, storage := range k.storageMap {
 		err := storage.Close()
 		if err != nil {
-			log.Error("close storage", zap.String("keyspace", storage.GetKeyspace()), zap.Error(err))
+			log.Error("close storage", zap.Error(err))
 		}
 	}
 }

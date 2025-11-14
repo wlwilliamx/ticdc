@@ -31,8 +31,8 @@ import (
 	"github.com/pingcap/ticdc/pkg/retry"
 	"github.com/pingcap/ticdc/pkg/security"
 	"github.com/pingcap/tidb/pkg/util/engine"
-	pd "github.com/tikv/pd/client"
-	pdopt "github.com/tikv/pd/client/opt"
+	pdclient "github.com/tikv/pd/client"
+	pdopt "github.com/tikv/pd/client"
 	"go.uber.org/zap"
 )
 
@@ -80,7 +80,7 @@ var checkClusterVersionRetryTimes = 10
 // CheckClusterVersion check TiKV and PD version.
 // need only one PD alive and match the cdc version.
 func CheckClusterVersion(
-	ctx context.Context, client pd.Client, pdAddrs []string,
+	ctx context.Context, client pdclient.Client, pdAddrs []string,
 	credential *security.Credential, errorTiKVIncompat bool,
 ) error {
 	err := CheckStoreVersion(ctx, client)
@@ -199,7 +199,7 @@ func checkPDVersion(ctx context.Context, pdAddr string, credential *security.Cre
 
 // CheckStoreVersion checks whether the given TiKV is compatible with this CDC.
 // If storeID is 0, it checks all TiKV.
-func CheckStoreVersion(ctx context.Context, client pd.Client) error {
+func CheckStoreVersion(ctx context.Context, client pdclient.Client) error {
 	failpoint.Inject("GetStoreFailed", func() {
 		failpoint.Return(cerror.WrapError(cerror.ErrGetAllStoresFailed, fmt.Errorf("unknown store")))
 	})

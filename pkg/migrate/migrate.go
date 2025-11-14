@@ -31,8 +31,8 @@ import (
 	"github.com/pingcap/ticdc/pkg/pdutil"
 	"github.com/pingcap/ticdc/pkg/security"
 	"github.com/pingcap/ticdc/pkg/txnutil/gc"
-	pd "github.com/tikv/pd/client"
-	pdopt "github.com/tikv/pd/client/opt"
+	pdclient "github.com/tikv/pd/client"
+	pdopt "github.com/tikv/pd/client"
 	clientV3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/concurrency"
 	"go.uber.org/atomic"
@@ -92,7 +92,7 @@ type migrator struct {
 
 	createPDClientFunc func(ctx context.Context,
 		pdEndpoints []string,
-		conf *security.Credential) (pd.Client, error)
+		conf *security.Credential) (pdclient.Client, error)
 }
 
 // NewMigrator returns a cdc metadata
@@ -129,13 +129,13 @@ func (m *migrator) IsMigrateDone() bool {
 func createPDClient(ctx context.Context,
 	pdEndpoints []string,
 	conf *security.Credential,
-) (pd.Client, error) {
+) (pdclient.Client, error) {
 	grpcTLSOption, err := conf.ToGRPCDialOption()
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
-	return pd.NewClientWithContext(
-		ctx, "cdc-migrator", pdEndpoints, conf.PDSecurityOption(),
+	return pdopt.NewClientWithContext(
+		ctx, pdEndpoints, conf.PDSecurityOption(),
 		pdopt.WithGRPCDialOptions(
 			grpcTLSOption,
 			grpc.WithBlock(),
@@ -372,7 +372,7 @@ func maskChangefeedInfo(data []byte) string {
 }
 
 func (m *migrator) migrateGcServiceSafePoint(ctx context.Context,
-	pdClient pd.Client,
+	pdClient pdclient.Client,
 	config *security.Credential,
 	newGcServiceID string,
 	ttl int64,

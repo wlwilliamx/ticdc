@@ -29,6 +29,7 @@ import (
 	"github.com/pingcap/ticdc/pkg/errors"
 	"github.com/pingcap/ticdc/pkg/sink/util"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 // DispatcherService defines the interface for providing dispatcher information and basic event handling.
@@ -373,7 +374,13 @@ func (d *BasicDispatcher) handleEvents(dispatcherEvents []DispatcherEvent, wakeC
 	latestResolvedTs := uint64(0)
 	// Dispatcher is ready, handle the events
 	for _, dispatcherEvent := range dispatcherEvents {
-		// if log.GetLevel() == zapcore.DebugLevel {
+		if log.GetLevel() == zapcore.DebugLevel {
+			log.Debug("dispatcher receive all event",
+				zap.Stringer("dispatcher", d.id), zap.Int64("mode", d.mode),
+				zap.String("eventType", commonEvent.TypeToString(dispatcherEvent.Event.GetType())),
+				zap.Any("event", dispatcherEvent.Event))
+		}
+
 		failpoint.Inject("HandleEventsSlowly", func() {
 			lag := time.Duration(rand.Intn(5000)) * time.Millisecond
 			log.Warn("handle events slowly", zap.Duration("lag", lag))
@@ -391,22 +398,6 @@ func (d *BasicDispatcher) handleEvents(dispatcherEvents []DispatcherEvent, wakeC
 				zap.Stringer("dispatcher", d.id))
 			continue
 		}
-
-		// if event.GetType() == commonEvent.TypeDMLEvent {
-		// 	dml := event.(*commonEvent.DMLEvent)
-		// 	for i, rowType := range dml.RowTypes {
-		// 		rowKey := dml.RowKeys[i]
-		// 		log.Info("dispatcher receive dml row",
-		// 			zap.Stringer("dispatcher", d.id),
-		// 			zap.Int64("mode", d.mode),
-		// 			zap.String("eventType", commonEvent.TypeToString(event.GetType())),
-		// 			zap.Uint64("commitTs", event.GetCommitTs()),
-		// 			zap.Uint64("startTs", event.GetStartTs()),
-		// 			zap.Int("rowType", int(rowType)),
-		// 			zap.String("hexKey", spanz.HexKey(rowKey)),
-		// 			zap.Any("rawKey", rowKey))
-		// 	}
-		// }
 
 		// only when we receive the first event, we can regard the dispatcher begin syncing data
 		// then turning into working status.

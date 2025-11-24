@@ -25,12 +25,11 @@ if [[ $($SED_CMD --version 2>/dev/null) == *"GNU"* ]]; then
 	echo "using GNU sed"
 	SED_INPLACE_ARGS=("-i")
 else
-	echo "This script requires GNU sed." >&2
-	echo "On macOS, you can install it with 'brew install gnu-sed' and use it as 'gsed'." >&2
-	exit 1
+	echo "using non-GNU sed"
+	SED_INPLACE_ARGS=("-i" "")
 fi
 
-"$SED_CMD" 's/namespace/keyspace_name/g;' $ORIGIN_FILE >"$NEXT_GEN_SHARED_FILE"
+"$SED_CMD" 's/namespace/keyspace_name/g;' "$ORIGIN_FILE" >"$NEXT_GEN_SHARED_FILE"
 
 if ! command -v jq &>/dev/null; then
 	echo "Error: jq is not installed. Please install it to run this script." >&2

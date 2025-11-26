@@ -1645,7 +1645,6 @@ func buildDDLEventCommonWithTableID(rawEvent *PersistedDDLEvent, tableID int64, 
 			zap.String("table", rawEvent.TableName),
 			zap.String("extraTable", rawEvent.ExtraTableName),
 			zap.String("query", rawEvent.Query),
-			zap.Any("tableInfo", rawEvent.TableInfo),
 			zap.Any("ddlType", model.ActionType(rawEvent.Type)),
 			zap.Uint64("startTs", rawEvent.StartTs),
 		)
@@ -1657,7 +1656,6 @@ func buildDDLEventCommonWithTableID(rawEvent *PersistedDDLEvent, tableID int64, 
 			zap.String("table", rawEvent.TableName),
 			zap.String("extraTable", rawEvent.ExtraTableName),
 			zap.String("query", rawEvent.Query),
-			zap.Any("tableInfo", rawEvent.TableInfo),
 			zap.Any("ddlType", model.ActionType(rawEvent.Type)),
 			zap.Uint64("startTs", rawEvent.StartTs),
 		)
@@ -2617,9 +2615,7 @@ func buildDDLEventForCreateTables(rawEvent *PersistedDDLEvent, tableFilter filte
 				return commonEvent.DDLEvent{}, false, err
 			}
 			if filtered {
-				log.Info("build ddl event for create tables filter table",
-					zap.String("schemaName", rawEvent.SchemaName),
-					zap.String("tableName", info.Name.O))
+				log.Info("discard DDL by filter in create tables", zap.String("schemaName", rawEvent.SchemaName), zap.String("tableName", info.Name.O))
 				continue
 			}
 		}

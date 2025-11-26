@@ -2587,9 +2587,7 @@ func buildDDLEventForCreateTables(rawEvent *PersistedDDLEvent, tableFilter filte
 				return commonEvent.DDLEvent{}, false, err
 			}
 			if filtered {
-				log.Info("build ddl event for create tables filter table",
-					zap.String("schemaName", rawEvent.SchemaName),
-					zap.String("tableName", info.Name.O))
+				log.Info("discard DDL by filter in create tables", zap.String("schemaName", rawEvent.SchemaName), zap.String("tableName", info.Name.O))
 				continue
 			}
 		}

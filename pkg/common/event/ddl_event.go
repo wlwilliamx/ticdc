@@ -56,7 +56,16 @@ type DDLEvent struct {
 	// The first entry always represents the current table information.
 	MultipleTableInfos []*common.TableInfo `json:"-"`
 
-	BlockedTables     *InfluencedTables `json:"blocked_tables"`
+	BlockedTables *InfluencedTables `json:"blocked_tables"`
+	// BlockedTableNames is used for downstream adapters to get the name of tables which should block this DDL.
+	// Particularly only for querying the execution status of add index DDL of which
+	// 	may execute asynchronously on this table before this DDL.
+	// This field will be set only for the most of InfluenceTypeNormal DDLs except for new table/schema, drop view DDLs.
+	// It will be empty for other DDLs.
+	// NOTE: For rename table/tables DDL, it will be set to all the old table names.
+	// For partition DDLs, it will be set to the parent table name, so if there are multiple partitions,
+	// just one parent table name will be set.
+	BlockedTableNames []SchemaTableName `json:"blocked_table_names"`
 	NeedDroppedTables *InfluencedTables `json:"need_dropped_tables"`
 	NeedAddedTables   []Table           `json:"need_added_tables"`
 
@@ -210,6 +219,10 @@ func (d *DDLEvent) PushFrontFlushFunc(f func()) {
 
 func (e *DDLEvent) GetBlockedTables() *InfluencedTables {
 	return e.BlockedTables
+}
+
+func (e *DDLEvent) GetBlockedTableNames() []SchemaTableName {
+	return e.BlockedTableNames
 }
 
 func (e *DDLEvent) GetNeedDroppedTables() *InfluencedTables {

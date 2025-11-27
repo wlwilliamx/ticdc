@@ -57,14 +57,13 @@ type DDLEvent struct {
 	MultipleTableInfos []*common.TableInfo `json:"-"`
 
 	BlockedTables *InfluencedTables `json:"blocked_tables"`
-	// BlockedTableNames is used for downstream adapters to get the name of tables which should block this DDL.
-	// Particularly only for querying the execution status of add index DDL of which
-	// 	may execute asynchronously on this table before this DDL.
-	// This field will be set only for the most of InfluenceTypeNormal DDLs except for new table/schema, drop view DDLs.
-	// It will be empty for other DDLs.
-	// NOTE: For rename table/tables DDL, it will be set to all the old table names.
-	// For partition DDLs, it will be set to the parent table name, so if there are multiple partitions,
-	// just one parent table name will be set.
+// BlockedTableNames is used by downstream adapters to get the names of tables that should block this DDL.
+// It is particularly used for querying the execution status of asynchronous DDLs (e.g., `ADD INDEX`)
+// that may be running on the table before this DDL.
+// This field will be set for most `InfluenceTypeNormal` DDLs, except for those creating new tables/schemas or dropping views.
+// It will be empty for other DDLs.
+// NOTE: For `RENAME TABLE` / `RENAME TABLES` DDLs, this will be set to the old table names.
+// For partition DDLs, this will be the parent table name.
 	BlockedTableNames []SchemaTableName `json:"blocked_table_names"`
 	NeedDroppedTables *InfluencedTables `json:"need_dropped_tables"`
 	NeedAddedTables   []Table           `json:"need_added_tables"`

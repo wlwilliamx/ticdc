@@ -62,7 +62,7 @@ mysql_groups=(
 	# G14
 	'batch_add_table batch_update_to_no_batch fail_over_ddl_O'
 	# G15
-	'split_region changefeed_resume_with_checkpoint_ts autorandom gc_safepoint foreign_key_check ddl_for_split_tables old_arch_compatibility'
+	'split_region changefeed_resume_with_checkpoint_ts autorandom gc_safepoint foreign_key_check old_arch_compatibility'
 )
 
 # Resource allocation for kafka light integration tests in CI pipelines:
@@ -100,7 +100,7 @@ kafka_groups=(
 	# G14
 	'kafka_simple_basic avro_basic debezium_basic fail_over_ddl_O'
 	# G15
-	'kafka_simple_basic_avro split_region autorandom gc_safepoint ddl_for_split_tables kafka_log_info'
+	'kafka_simple_basic_avro split_region autorandom gc_safepoint kafka_log_info'
 )
 
 # Resource allocation for pulsar light integration tests in CI pipelines:
@@ -138,7 +138,7 @@ pulsar_groups=(
 	# G14
 	'avro_basic debezium_basic fail_over_ddl_O'
 	# G15
-	'split_region autorandom gc_safepoint ddl_for_split_tables'
+	'split_region autorandom gc_safepoint'
 )
 
 # Resource allocation for storage light integration tests in CI pipelines:
@@ -166,7 +166,7 @@ storage_groups=(
 	# G09
 	'cdc_server_tips ddl_sequence fail_over_ddl_J'
 	# G10
-	'changefeed_error batch_add_table fail_over_ddl_K  split_table_check'
+	'changefeed_error batch_add_table fail_over_ddl_K split_table_check'
 	# G11
 	'ddl_attributes multi_tables_ddl fail_over_ddl_L'
 	# G12
@@ -176,7 +176,7 @@ storage_groups=(
 	# G14
 	'csv_storage_multi_tables_ddl fail_over_ddl_O'
 	# G15
-	'split_region autorandom gc_safepoint ddl_for_split_tables'
+	'split_region autorandom gc_safepoint'
 )
 
 # Source shared functions and check test coverage

@@ -2498,10 +2498,10 @@ func TestApplyDDLJobs(t *testing.T) {
 						})
 						if !reflect.DeepEqual(expectedDDLEvent.BlockedTableNames, actualDDLEvent.BlockedTableNames) {
 							log.Warn("BlockedTableNames not equal",
-								zap.String("DDL Type", model.ActionType(expectedDDLEvent.Type).String()),
+								zap.String("DDLType", model.ActionType(expectedDDLEvent.Type).String()),
 								zap.Uint64("TS", expectedDDLEvent.FinishedTs),
-								zap.Any("expected BlockedTableNames", expectedDDLEvent.BlockedTableNames),
-								zap.Any("actual BlockedTableNames", actualDDLEvent.BlockedTableNames))
+								zap.Any("expectedBlockedTableNames", expectedDDLEvent.BlockedTableNames),
+								zap.Any("actualBlockedTableNames", actualDDLEvent.BlockedTableNames))
 							return false
 						}
 						// check UpdatedSchemas

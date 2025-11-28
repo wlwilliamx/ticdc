@@ -318,8 +318,8 @@ func (d *BasicDispatcher) GetCheckpointTs() uint64 {
 // updateDispatcherStatusToWorking updates the dispatcher status to working and adds it to status dynamic stream
 func (d *BasicDispatcher) updateDispatcherStatusToWorking() {
 	log.Info("update dispatcher status to working",
-		zap.Stringer("dispatcher", d.id),
 		zap.Stringer("changefeedID", d.sharedInfo.changefeedID),
+		zap.Stringer("dispatcher", d.id),
 		zap.String("table", common.FormatTableSpan(d.tableSpan)),
 		zap.Uint64("checkpointTs", d.GetCheckpointTs()),
 		zap.Uint64("resolvedTs", d.GetResolvedTs()),
@@ -566,9 +566,9 @@ func (d *BasicDispatcher) HandleDispatcherStatus(dispatcherStatus *heartbeatpb.D
 		}
 		if d.blockEventStatus.actionMatchs(action) {
 			log.Info("pending event get the action",
+				zap.Stringer("dispatcher", d.id),
 				zap.Any("action", action),
 				zap.Any("innerAction", int(action.Action)),
-				zap.Stringer("dispatcher", d.id),
 				zap.Uint64("pendingEventCommitTs", pendingEvent.GetCommitTs()))
 			d.blockEventStatus.updateBlockStage(heartbeatpb.BlockStage_WRITING)
 			pendingEvent.PushFrontFlushFunc(func() {
@@ -819,6 +819,7 @@ func (d *BasicDispatcher) TryClose() (w heartbeatpb.Watermark, ok bool) {
 		return w, true
 	}
 	log.Info("dispatcher is not ready to close",
+		zap.Stringer("changefeedID", d.sharedInfo.changefeedID),
 		zap.Stringer("dispatcher", d.id),
 		zap.Int64("mode", d.mode),
 		zap.Bool("sinkIsNormal", d.sink.IsNormal()),
@@ -831,9 +832,9 @@ func (d *BasicDispatcher) TryClose() (w heartbeatpb.Watermark, ok bool) {
 // It removes the dispatcher from status dynamic stream to stop receiving status info from maintainer.
 func (d *BasicDispatcher) removeDispatcher() {
 	log.Info("remove dispatcher",
+		zap.Stringer("changefeedID", d.sharedInfo.changefeedID),
 		zap.Stringer("dispatcher", d.id),
 		zap.Int64("mode", d.mode),
-		zap.Stringer("changefeedID", d.sharedInfo.changefeedID),
 		zap.String("table", common.FormatTableSpan(d.tableSpan)))
 	dispatcherStatusDS := GetDispatcherStatusDynamicStream()
 	err := dispatcherStatusDS.RemovePath(d.id)

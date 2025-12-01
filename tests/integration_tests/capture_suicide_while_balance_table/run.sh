@@ -52,7 +52,6 @@ function run() {
 
 	rm -rf $WORK_DIR && mkdir -p $WORK_DIR
 	start_tidb_cluster --workdir $WORK_DIR
-	cd $WORK_DIR
 
 	pd_addr="http://$UP_PD_HOST_1:$UP_PD_PORT_1"
 	run_cdc_server --workdir $WORK_DIR --binary $CDC_BINARY --pd $pd_addr --logsuffix 1 --addr "127.0.0.1:8300"

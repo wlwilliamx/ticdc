@@ -12,7 +12,6 @@ function prepare() {
 	# This test focuses on the maintainer logic, works with all sink types
 	rm -rf $WORK_DIR && mkdir -p $WORK_DIR
 	start_tidb_cluster --workdir $WORK_DIR
-	cd $WORK_DIR
 
 	# Main test execution
 	echo "=== Starting checkpoint race condition stress test ==="

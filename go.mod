@@ -371,10 +371,10 @@ require (
 // copy from TiDB
 replace github.com/go-ldap/ldap/v3 v3.4.4 => github.com/yangkeao/ldap/v3 v3.4.5-0.20230421065457-369a3bab1117
 
-replace github.com/IBM/sarama v1.41.2 => github.com/pingcap/sarama v1.41.2-pingcap-20250416
-
 replace github.com/tikv/pd/client => github.com/tikv/pd/client v0.0.0-20250213080903-727c2086a763
 
 replace github.com/pingcap/tipb => github.com/pingcap/tipb v0.0.0-20241022082558-0607513e7fa4
 
 replace github.com/pingcap/kvproto => github.com/pingcap/kvproto v0.0.0-20250224053625-b6a98c6bf02d
+
+replace github.com/IBM/sarama v1.41.2 => github.com/pingcap/sarama v1.41.2-pingcap-20251202-x

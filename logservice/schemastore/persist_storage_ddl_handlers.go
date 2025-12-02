@@ -1850,6 +1850,7 @@ func buildDDLEventForDropTable(rawEvent *PersistedDDLEvent, tableFilter filter.F
 			},
 		},
 	}
+	ddlEvent.BlockedTableNames = []commonEvent.SchemaTableName{{SchemaName: rawEvent.SchemaName, TableName: rawEvent.TableName}}
 	return ddlEvent, true, err
 }
 
@@ -1880,6 +1881,7 @@ func buildDDLEventForNormalDDLOnSingleTable(rawEvent *PersistedDDLEvent, tableFi
 			TableIDs:      []int64{rawEvent.TableID},
 		}
 	}
+	ddlEvent.BlockedTableNames = []commonEvent.SchemaTableName{{SchemaName: rawEvent.SchemaName, TableName: rawEvent.TableName}}
 	return ddlEvent, true, err
 }
 
@@ -1908,6 +1910,7 @@ func buildDDLEventForNormalDDLOnSingleTableForTiDB(rawEvent *PersistedDDLEvent, 
 			TableIDs:      []int64{rawEvent.TableID},
 		}
 	}
+	ddlEvent.BlockedTableNames = []commonEvent.SchemaTableName{{SchemaName: rawEvent.SchemaName, TableName: rawEvent.TableName}}
 	return ddlEvent, true, err
 }
 
@@ -1959,6 +1962,7 @@ func buildDDLEventForTruncateTable(rawEvent *PersistedDDLEvent, tableFilter filt
 			TableIDs:      []int64{rawEvent.TableID, common.DDLSpanTableID},
 		}
 	}
+	ddlEvent.BlockedTableNames = []commonEvent.SchemaTableName{{SchemaName: rawEvent.SchemaName, TableName: rawEvent.TableName}}
 	return ddlEvent, true, err
 }
 
@@ -2010,6 +2014,7 @@ func buildDDLEventForRenameTable(rawEvent *PersistedDDLEvent, tableFilter filter
 				InfluenceType: commonEvent.InfluenceTypeNormal,
 				TableIDs:      allPhysicalIDsAndDDLSpanID,
 			}
+			ddlEvent.BlockedTableNames = []commonEvent.SchemaTableName{{SchemaName: rawEvent.ExtraSchemaName, TableName: rawEvent.ExtraTableName}}
 			if !ignoreCurrentTable {
 				// check whether schema change
 				if rawEvent.ExtraSchemaID != rawEvent.SchemaID {
@@ -2068,6 +2073,8 @@ func buildDDLEventForRenameTable(rawEvent *PersistedDDLEvent, tableFilter filter
 				InfluenceType: commonEvent.InfluenceTypeNormal,
 				TableIDs:      []int64{rawEvent.TableID, common.DDLSpanTableID},
 			}
+			// Set the old schema and table names for rename table.
+			ddlEvent.BlockedTableNames = []commonEvent.SchemaTableName{{SchemaName: rawEvent.ExtraSchemaName, TableName: rawEvent.ExtraTableName}}
 			if !ignoreCurrentTable {
 				if rawEvent.ExtraSchemaID != rawEvent.SchemaID {
 					ddlEvent.UpdatedSchemas = []commonEvent.SchemaIDChange{
@@ -2150,6 +2157,7 @@ func buildDDLEventForAddPartition(rawEvent *PersistedDDLEvent, tableFilter filte
 			Splitable: splitable,
 		})
 	}
+	ddlEvent.BlockedTableNames = []commonEvent.SchemaTableName{{SchemaName: rawEvent.SchemaName, TableName: rawEvent.TableName}}
 	return ddlEvent, true, err
 }
 
@@ -2174,6 +2182,7 @@ func buildDDLEventForDropPartition(rawEvent *PersistedDDLEvent, tableFilter filt
 		InfluenceType: commonEvent.InfluenceTypeNormal,
 		TableIDs:      droppedIDs,
 	}
+	ddlEvent.BlockedTableNames = []commonEvent.SchemaTableName{{SchemaName: rawEvent.SchemaName, TableName: rawEvent.TableName}}
 	return ddlEvent, true, err
 }
 
@@ -2236,6 +2245,7 @@ func buildDDLEventForTruncateAndReorganizePartition(rawEvent *PersistedDDLEvent,
 		InfluenceType: commonEvent.InfluenceTypeNormal,
 		TableIDs:      droppedIDs,
 	}
+	ddlEvent.BlockedTableNames = []commonEvent.SchemaTableName{{SchemaName: rawEvent.SchemaName, TableName: rawEvent.TableName}}
 	return ddlEvent, true, err
 }
 
@@ -2311,6 +2321,10 @@ func buildDDLEventForExchangeTablePartition(rawEvent *PersistedDDLEvent, tableFi
 				},
 			}
 		}
+		ddlEvent.BlockedTableNames = []commonEvent.SchemaTableName{
+			{SchemaName: rawEvent.SchemaName, TableName: rawEvent.TableName},
+			{SchemaName: rawEvent.ExtraSchemaName, TableName: rawEvent.ExtraTableName},
+		}
 	} else if !ignoreNormalTable {
 		ddlEvent.BlockedTables = &commonEvent.InfluencedTables{
 			InfluenceType: commonEvent.InfluenceTypeNormal,
@@ -2327,6 +2341,9 @@ func buildDDLEventForExchangeTablePartition(rawEvent *PersistedDDLEvent, tableFi
 				Splitable: isSplitable(rawEvent.TableInfo),
 			},
 		}
+		ddlEvent.BlockedTableNames = []commonEvent.SchemaTableName{
+			{SchemaName: rawEvent.SchemaName, TableName: rawEvent.TableName},
+		}
 	} else if !ignorePartitionTable {
 		ddlEvent.BlockedTables = &commonEvent.InfluencedTables{
 			InfluenceType: commonEvent.InfluenceTypeNormal,
@@ -2342,6 +2359,9 @@ func buildDDLEventForExchangeTablePartition(rawEvent *PersistedDDLEvent, tableFi
 				TableID:   rawEvent.TableID,
 				Splitable: isSplitable(rawEvent.TableInfo),
 			},
+		}
+		ddlEvent.BlockedTableNames = []commonEvent.SchemaTableName{
+			{SchemaName: rawEvent.ExtraSchemaName, TableName: rawEvent.ExtraTableName},
 		}
 	} else {
 		log.Fatal("should not happen")
@@ -2401,6 +2421,7 @@ func buildDDLEventForRenameTables(rawEvent *PersistedDDLEvent, tableFilter filte
 	allFiltered := true
 	resultQuerys := make([]string, 0)
 	tableInfos := make([]*common.TableInfo, 0)
+	blockedTableNames := make([]commonEvent.SchemaTableName, 0)
 	if len(querys) != len(rawEvent.MultipleTableInfos) {
 		log.Panic("rename tables length is not equal table infos", zap.Any("querys", querys), zap.Any("tableInfos", rawEvent.MultipleTableInfos))
 	}
@@ -2432,6 +2453,10 @@ func buildDDLEventForRenameTables(rawEvent *PersistedDDLEvent, tableFilter filte
 					resultQuerys = append(resultQuerys, querys[i])
 					tableInfos = append(tableInfos, common.WrapTableInfo(rawEvent.SchemaNames[i], tableInfo))
 				}
+				blockedTableNames = append(blockedTableNames, commonEvent.SchemaTableName{
+					SchemaName: rawEvent.ExtraSchemaNames[i],
+					TableName:  rawEvent.ExtraTableNames[i],
+				})
 				if tableInfo.ID != InvalidTableID {
 					ddlEvent.BlockedTables.TableIDs = append(ddlEvent.BlockedTables.TableIDs, allPhysicalIDs...)
 				}
@@ -2498,6 +2523,10 @@ func buildDDLEventForRenameTables(rawEvent *PersistedDDLEvent, tableFilter filte
 					resultQuerys = append(resultQuerys, querys[i])
 					tableInfos = append(tableInfos, common.WrapTableInfo(rawEvent.SchemaNames[i], tableInfo))
 				}
+				blockedTableNames = append(blockedTableNames, commonEvent.SchemaTableName{
+					SchemaName: rawEvent.ExtraSchemaNames[i],
+					TableName:  rawEvent.ExtraTableNames[i],
+				})
 				if tableInfo.ID != InvalidTableID {
 					ddlEvent.BlockedTables.TableIDs = append(ddlEvent.BlockedTables.TableIDs, tableInfo.ID)
 				}
@@ -2557,6 +2586,7 @@ func buildDDLEventForRenameTables(rawEvent *PersistedDDLEvent, tableFilter filte
 		}
 	}
 	ddlEvent.Query = strings.Join(resultQuerys, "")
+	ddlEvent.BlockedTableNames = blockedTableNames
 	ddlEvent.MultipleTableInfos = tableInfos
 	// For rename tables, we don't set NotSync, because we have already filter out the querys and multiple table infos which are NotSync.
 	// So here we just set NotSync to false.
@@ -2693,6 +2723,7 @@ func buildDDLEventForAlterTablePartitioning(rawEvent *PersistedDDLEvent, tableFi
 			Splitable: splitable,
 		})
 	}
+	ddlEvent.BlockedTableNames = []commonEvent.SchemaTableName{{SchemaName: rawEvent.SchemaName, TableName: rawEvent.TableName}}
 	return ddlEvent, true, err
 }
 
@@ -2720,5 +2751,6 @@ func buildDDLEventForRemovePartitioning(rawEvent *PersistedDDLEvent, tableFilter
 			Splitable: isSplitable(rawEvent.TableInfo),
 		},
 	}
+	ddlEvent.BlockedTableNames = []commonEvent.SchemaTableName{{SchemaName: rawEvent.SchemaName, TableName: rawEvent.TableName}}
 	return ddlEvent, true, err
 }

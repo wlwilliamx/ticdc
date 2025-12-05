@@ -16,6 +16,8 @@ package mysql
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -62,13 +64,18 @@ func (w *Writer) execDDL(event *commonEvent.DDLEvent) error {
 		}
 	}
 
-	failpoint.Inject("MySQLSinkExecDDLDelay", func() {
+	failpoint.Inject("MySQLSinkExecDDLDelay", func(val failpoint.Value) {
+		delay := time.Hour
+		if seconds, ok := val.(string); ok && seconds != "" {
+			if v, err := strconv.Atoi(strings.TrimSpace(seconds)); err == nil && v > 0 {
+				delay = time.Duration(v) * time.Second
+			}
+		}
 		select {
 		case <-ctx.Done():
 			failpoint.Return(ctx.Err())
-		case <-time.After(time.Hour):
+		case <-time.After(delay):
 		}
-		failpoint.Return(nil)
 	})
 
 	tx, err := w.db.BeginTx(ctx, nil)

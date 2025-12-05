@@ -210,6 +210,7 @@ func (s *EventTestHelper) DDL2Event(ddl string) *DDLEvent {
 		Query:      job.Query,
 		Type:       byte(job.Type),
 		TableInfo:  info,
+		StartTs:    job.StartTS,
 		FinishedTs: job.BinlogInfo.FinishedTS,
 	}
 }

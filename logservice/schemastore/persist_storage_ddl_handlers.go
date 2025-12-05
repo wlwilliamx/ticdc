@@ -1677,6 +1677,7 @@ func buildDDLEventCommonWithTableID(rawEvent *PersistedDDLEvent, tableID int64, 
 
 		Query:      rawEvent.Query,
 		TableInfo:  wrapTableInfo,
+		StartTs:    rawEvent.StartTs,
 		FinishedTs: rawEvent.FinishedTs,
 		TiDBOnly:   tiDBOnly,
 		BDRMode:    rawEvent.BDRRole,

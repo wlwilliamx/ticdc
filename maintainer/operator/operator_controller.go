@@ -115,17 +115,29 @@ func (oc *Controller) Execute() time.Time {
 // RemoveTasksBySchemaID remove all tasks by schema id.
 // it is only by the barrier when the schema is dropped by ddl
 func (oc *Controller) RemoveTasksBySchemaID(schemaID int64) {
-	oc.spanController.RemoveBySchemaID(func(replicaSet *replica.SpanReplication) {
-		oc.removeReplicaSet(newRemoveDispatcherOperator(oc.spanController, replicaSet))
-	}, schemaID)
+	tasks := oc.spanController.GetRemoveTasksBySchemaID(schemaID)
+	for _, task := range tasks {
+		oc.removeReplicaSet(newRemoveDispatcherOperator(oc.spanController, task))
+	}
+	oc.spanController.RemoveBySchemaID(schemaID)
 }
 
 // RemoveTasksByTableIDs remove all tasks by table ids.
 // it is only called by the barrier when the table is dropped by ddl
+//
+// When the split dispatcher operator is running, a TRUNCATE TABLE DDL can potentially drop the dispatcher.
+// This leads to the completion of the split dispatcher operator and the subsequent removal of the span.
+// However, the operator callback may erroneously mark the span as absent. To avoid this situation,
+// we should first remove the replicaSet and then remove the span to ensure it doesn't remain active.
+//
+// Note: removeReplicaSet creates operators and touches the operator controller lock hierarchy, so it must
+// NOT be executed while holding spanController's internal locks, otherwise deadlock may happen.
 func (oc *Controller) RemoveTasksByTableIDs(tables ...int64) {
-	oc.spanController.RemoveByTableIDs(func(replicaSet *replica.SpanReplication) {
-		oc.removeReplicaSet(newRemoveDispatcherOperator(oc.spanController, replicaSet))
-	}, tables...)
+	tasks := oc.spanController.GetRemoveTasksByTableIDs(tables...)
+	for _, task := range tasks {
+		oc.removeReplicaSet(newRemoveDispatcherOperator(oc.spanController, task))
+	}
+	oc.spanController.RemoveByTableIDs(tables...)
 }
 
 // AddOperator adds an operator to the controller, if the operator already exists, return false.

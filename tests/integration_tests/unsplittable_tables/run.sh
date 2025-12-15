@@ -60,6 +60,7 @@ function run_for_force_split() {
 	query_dispatcher_count "127.0.0.1:8300" "test2" 6 10 # table trigger + t1 (split to 5 regions)
 
 	cleanup_process $CDC_BINARY
+	
 	stop_tidb_cluster
 }
 

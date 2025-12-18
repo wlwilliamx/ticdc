@@ -60,6 +60,7 @@ func NewRemoveDispatcherOperator(
 func newRemoveDispatcherOperator(spanController *span.Controller, replicaSet *replica.SpanReplication, operatorType heartbeatpb.OperatorType) *removeDispatcherOperator {
 	return &removeDispatcherOperator{
 		replicaSet:     replicaSet,
+		nodeID:         replicaSet.GetNodeID(),
 		spanController: spanController,
 		operatorType:   operatorType,
 		sendThrottler:  newSendThrottler(),

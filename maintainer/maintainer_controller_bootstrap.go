@@ -109,7 +109,9 @@ func (c *Controller) FinishBootstrap(
 
 	// Step 4: Process tables and build schema info
 	// restore current working operators first
-	c.restoreCurrentWorkingOperators(allNodesResp)
+	if err := c.restoreCurrentWorkingOperators(allNodesResp); err != nil {
+		return nil, err
+	}
 	schemaInfos := c.processTablesAndBuildSchemaInfo(tables, workingTaskMap, redoWorkingTaskMap, isMysqlCompatibleBackend)
 
 	// Step 5: Handle any remaining working tasks (likely dropped tables)

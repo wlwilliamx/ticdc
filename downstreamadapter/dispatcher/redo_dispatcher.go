@@ -39,7 +39,7 @@ type RedoDispatcher struct {
 func NewRedoDispatcher(
 	id common.DispatcherID,
 	tableSpan *heartbeatpb.TableSpan,
-	endabledSplit bool,
+	enabledSplit bool,
 	startTs uint64,
 	schemaID int64,
 	schemaIDToDispatchers *SchemaIDToDispatchers,
@@ -50,7 +50,7 @@ func NewRedoDispatcher(
 	basicDispatcher := NewBasicDispatcher(
 		id,
 		tableSpan,
-		endabledSplit,
+		enabledSplit,
 		startTs,
 		schemaID,
 		schemaIDToDispatchers,

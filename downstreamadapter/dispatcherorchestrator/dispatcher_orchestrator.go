@@ -408,7 +408,7 @@ func createBootstrapResponse(
 		req := value.(*heartbeatpb.ScheduleDispatcherRequest)
 		d, ok := manager.GetDispatcherMap().Get(common.NewDispatcherIDFromPB(req.Config.DispatcherID))
 		if !ok {
-			log.Error("Redo dispatcher not found, this should not happen",
+			log.Error("Dispatcher not found, this should not happen",
 				zap.String("changefeed", changefeedID.String()),
 				zap.String("dispatcherID", req.Config.DispatcherID.String()),
 			)

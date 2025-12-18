@@ -21,6 +21,7 @@ import (
 	"github.com/pingcap/log"
 	"github.com/pingcap/ticdc/heartbeatpb"
 	"github.com/pingcap/ticdc/logservice/schemastore"
+	"github.com/pingcap/ticdc/maintainer/operator"
 	"github.com/pingcap/ticdc/maintainer/replica"
 	"github.com/pingcap/ticdc/maintainer/span"
 	"github.com/pingcap/ticdc/maintainer/split"
@@ -107,6 +108,8 @@ func (c *Controller) FinishBootstrap(
 	workingTaskMap, redoWorkingTaskMap := c.buildWorkingTaskMap(allNodesResp, tableSplitMap)
 
 	// Step 4: Process tables and build schema info
+	// restore current working operators first
+	c.restoreCurrentWorkingOperators(allNodesResp)
 	schemaInfos := c.processTablesAndBuildSchemaInfo(tables, workingTaskMap, redoWorkingTaskMap, isMysqlCompatibleBackend)
 
 	// Step 5: Handle any remaining working tasks (likely dropped tables)
@@ -214,10 +217,12 @@ func (c *Controller) processTableSpans(
 ) {
 	tableSpans, isTableWorking := workingTaskMap[table.TableID]
 	spanController := c.getSpanController(mode)
+	replicaSets := spanController.GetTasksByTableID(table.TableID)
+	isTableSpanExists := replicaSets != nil && len(replicaSets) > 0
 	splitEnabled := spanController.ShouldEnableSplit(table.Splitable)
 
 	// Add new table if not working
-	if isTableWorking {
+	if isTableWorking || isTableSpanExists {
 		// Handle existing table spans
 		keyspaceID := c.GetKeyspaceID()
 		span := common.TableIDToComparableSpan(keyspaceID, table.TableID)
@@ -234,6 +239,11 @@ func (c *Controller) processTableSpans(
 		spanController.AddWorkingSpans(tableSpans)
 
 		if c.enableTableAcrossNodes {
+			if isTableSpanExists {
+				for _, replicaSet := range replicaSets {
+					tableSpans.ReplaceOrInsert(replicaSet.Span, replicaSet)
+				}
+			}
 			c.handleTableHoles(spanController, table, tableSpans, tableSpan, splitEnabled)
 		}
 		// Remove processed table from working task map
@@ -408,4 +418,66 @@ func findHoles(currentSpan utils.Map[*heartbeatpb.TableSpan, *replica.SpanReplic
 		})
 	}
 	return holes
+}
+
+func (c *Controller) restoreCurrentWorkingOperators(
+	allNodesResp map[node.ID]*heartbeatpb.MaintainerBootstrapResponse,
+) error {
+	for node, resp := range allNodesResp {
+		for _, req := range resp.Operators {
+			dispatcherID := common.NewDispatcherIDFromPB(req.Config.DispatcherID)
+			spanController := c.getSpanController(req.Config.Mode)
+			replicaSet := spanController.GetTaskByID(dispatcherID)
+			if replicaSet != nil {
+				log.Error("found duplicate replica set, which should not happen",
+					zap.String("nodeID", node.String()),
+					zap.String("changefeed", resp.ChangefeedID.String()),
+					zap.Any("replicaSet", replicaSet))
+				return errors.New("duplicate replica set found")
+			}
+			replicaSet = replica.NewSpanReplication(
+				c.changefeedID,
+				dispatcherID,
+				req.Config.SchemaID,
+				req.Config.Span,
+				req.Config.StartTs,
+				req.Config.Mode,
+				req.Config.EnabledSplit,
+			)
+			spanController.AddAbsentReplicaSet(replicaSet)
+			switch req.ScheduleAction {
+			case heartbeatpb.ScheduleAction_Create:
+				switch req.OperatorType {
+				case heartbeatpb.OperatorType_O_Add, heartbeatpb.OperatorType_O_Move, heartbeatpb.OperatorType_O_Split:
+					op := operator.NewAddDispatcherOperator(spanController, replicaSet, node, heartbeatpb.OperatorType_O_Add)
+					c.operatorController.AddOperator(op)
+					op.Start()
+				}
+			case heartbeatpb.ScheduleAction_Remove:
+				switch req.OperatorType {
+				case heartbeatpb.OperatorType_O_Remove:
+					op := operator.NewRemoveDispatcherOperator(
+						spanController,
+						replicaSet,
+						heartbeatpb.OperatorType_O_Remove,
+						nil,
+					)
+					c.operatorController.AddOperator(op)
+					op.Start()
+				case heartbeatpb.OperatorType_O_Move, heartbeatpb.OperatorType_O_Split:
+					op := operator.NewRemoveDispatcherOperator(
+						spanController,
+						replicaSet,
+						req.OperatorType,
+						func() { // post finish
+							spanController.MarkAbsentWithoutLock(replicaSet)
+						},
+					)
+					c.operatorController.AddOperator(op)
+					op.Start()
+				}
+			}
+		}
+	}
+	return nil
 }

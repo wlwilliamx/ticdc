@@ -228,7 +228,7 @@ func (r *SpanReplication) GetGroupID() replica.GroupID {
 	return r.groupID
 }
 
-func (r *SpanReplication) NewAddDispatcherMessage(server node.ID) *messaging.TargetMessage {
+func (r *SpanReplication) NewAddDispatcherMessage(server node.ID, operatorType heartbeatpb.OperatorType) *messaging.TargetMessage {
 	return messaging.NewSingleTargetMessage(server,
 		messaging.HeartbeatCollectorTopic,
 		&heartbeatpb.ScheduleDispatcherRequest{
@@ -239,16 +239,18 @@ func (r *SpanReplication) NewAddDispatcherMessage(server node.ID) *messaging.Tar
 				Span:         r.Span,
 				StartTs:      r.status.Load().CheckpointTs,
 				Mode:         r.GetMode(),
+				EnabledSplit: r.enabledSplit,
 			},
 			ScheduleAction: heartbeatpb.ScheduleAction_Create,
+			OperatorType:   operatorType,
 		})
 }
 
-func (r *SpanReplication) NewRemoveDispatcherMessage(server node.ID) *messaging.TargetMessage {
-	return NewRemoveDispatcherMessage(server, r.ChangefeedID, r.ID.ToPB(), r.GetMode())
+func (r *SpanReplication) NewRemoveDispatcherMessage(server node.ID, operatorType heartbeatpb.OperatorType) *messaging.TargetMessage {
+	return NewRemoveDispatcherMessage(server, r.ChangefeedID, r.ID.ToPB(), r.GetMode(), operatorType)
 }
 
-func NewRemoveDispatcherMessage(server node.ID, cfID common.ChangeFeedID, dispatcherID *heartbeatpb.DispatcherID, mode int64) *messaging.TargetMessage {
+func NewRemoveDispatcherMessage(server node.ID, cfID common.ChangeFeedID, dispatcherID *heartbeatpb.DispatcherID, mode int64, operatorType heartbeatpb.OperatorType) *messaging.TargetMessage {
 	return messaging.NewSingleTargetMessage(server,
 		messaging.HeartbeatCollectorTopic,
 		&heartbeatpb.ScheduleDispatcherRequest{
@@ -258,5 +260,6 @@ func NewRemoveDispatcherMessage(server node.ID, cfID common.ChangeFeedID, dispat
 				Mode:         mode,
 			},
 			ScheduleAction: heartbeatpb.ScheduleAction_Remove,
+			OperatorType:   operatorType,
 		})
 }

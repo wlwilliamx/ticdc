@@ -15,6 +15,7 @@ package dispatchermanager
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/pingcap/log"
@@ -109,7 +110,7 @@ func (e *DispatcherManager) NewRedoTableTriggerEventDispatcher(id *heartbeatpb.D
 func (e *DispatcherManager) newRedoDispatchers(infos map[common.DispatcherID]dispatcherCreateInfo, removeDDLTs bool) error {
 	start := time.Now()
 
-	dispatcherIds, tableIds, startTsList, tableSpans, schemaIds := prepareCreateDispatcher(infos, e.redoDispatcherMap)
+	dispatcherIds, tableIds, startTsList, tableSpans, schemaIds, enabledSplits := prepareCreateDispatcher(infos, e.redoDispatcherMap)
 	if len(dispatcherIds) == 0 {
 		return nil
 	}
@@ -131,6 +132,7 @@ func (e *DispatcherManager) newRedoDispatchers(infos map[common.DispatcherID]dis
 		rd := dispatcher.NewRedoDispatcher(
 			id,
 			tableSpans[idx],
+			enabledSplits[idx],
 			uint64(newStartTsList[idx]),
 			schemaIds[idx],
 			e.redoSchemaIDToDispatchers,
@@ -193,6 +195,7 @@ func (e *DispatcherManager) mergeRedoDispatcher(dispatcherIDs []common.Dispatche
 	mergedDispatcher := dispatcher.NewRedoDispatcher(
 		mergedDispatcherID,
 		mergedSpan,
+		true,
 		fakeStartTs, // real startTs will be calculated later.
 		schemaID,
 		e.redoSchemaIDToDispatchers,
@@ -211,8 +214,13 @@ func (e *DispatcherManager) mergeRedoDispatcher(dispatcherIDs []common.Dispatche
 }
 
 func (e *DispatcherManager) cleanRedoDispatcher(id common.DispatcherID, schemaID int64) {
+	var spanStr string
+	if d, ok := e.redoDispatcherMap.m.Load(id); ok {
+		spanStr = d.(*dispatcher.RedoDispatcher).GetTableSpan().String()
+	}
 	e.redoDispatcherMap.Delete(id)
 	e.redoSchemaIDToDispatchers.Delete(schemaID, id)
+	e.redoCurrentOperatorMap.Delete(spanStr)
 	if e.redoTableTriggerEventDispatcher != nil && e.redoTableTriggerEventDispatcher.GetId() == id {
 		e.redoTableTriggerEventDispatcher = nil
 		e.metricRedoTableTriggerEventDispatcherCount.Dec()
@@ -268,4 +276,8 @@ func (e *DispatcherManager) GetAllRedoDispatchers(schemaID int64) []common.Dispa
 		dispatcherIDs = append(dispatcherIDs, e.redoTableTriggerEventDispatcher.GetId())
 	}
 	return dispatcherIDs
+}
+
+func (e *DispatcherManager) GetRedoCurrentOperatorMap() *sync.Map {
+	return &e.redoCurrentOperatorMap
 }

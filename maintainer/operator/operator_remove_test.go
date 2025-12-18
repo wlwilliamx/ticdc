@@ -16,6 +16,7 @@ package operator
 import (
 	"testing"
 
+	"github.com/pingcap/ticdc/heartbeatpb"
 	"github.com/pingcap/ticdc/pkg/messaging"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +28,7 @@ import (
 func TestRemoveOperator_NodeRemovedBeforeStopped(t *testing.T) {
 	spanController, _, replicaSet, nodeA, _ := setupTestEnvironment(t)
 
-	op := newRemoveDispatcherOperator(spanController, replicaSet)
+	op := newRemoveDispatcherOperator(spanController, replicaSet, heartbeatpb.OperatorType_O_Remove)
 	require.NotNil(t, op)
 
 	op.Start()

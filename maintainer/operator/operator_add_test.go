@@ -50,7 +50,7 @@ func TestAddOperator_DestNodeRemoved(t *testing.T) {
 
 	spanController.AddAbsentReplicaSet(absentReplicaSet)
 
-	op := NewAddDispatcherOperator(spanController, absentReplicaSet, nodeB)
+	op := NewAddDispatcherOperator(spanController, absentReplicaSet, nodeB, heartbeatpb.OperatorType_O_Add)
 	require.NotNil(t, op)
 
 	op.Start()

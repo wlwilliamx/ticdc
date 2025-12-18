@@ -14,6 +14,8 @@
 package dispatchermanager
 
 import (
+	"sync"
+
 	"github.com/pingcap/ticdc/downstreamadapter/dispatcher"
 	"github.com/pingcap/ticdc/heartbeatpb"
 	"github.com/pingcap/ticdc/pkg/common"
@@ -23,10 +25,11 @@ import (
 // event_dispatcher_mananger_info.go is used to store the basic info and function of the event dispatcher manager
 
 type dispatcherCreateInfo struct {
-	Id        common.DispatcherID
-	TableSpan *heartbeatpb.TableSpan
-	StartTs   uint64
-	SchemaID  int64
+	Id           common.DispatcherID
+	TableSpan    *heartbeatpb.TableSpan
+	StartTs      uint64
+	SchemaID     int64
+	EnabledSplit bool
 }
 
 type cleanMap struct {
@@ -76,4 +79,8 @@ func (e *DispatcherManager) GetAllDispatchers(schemaID int64) []common.Dispatche
 		dispatcherIDs = append(dispatcherIDs, e.tableTriggerEventDispatcher.GetId())
 	}
 	return dispatcherIDs
+}
+
+func (e *DispatcherManager) GetCurrentOperatorMap() *sync.Map {
+	return &e.currentOperatorMap
 }

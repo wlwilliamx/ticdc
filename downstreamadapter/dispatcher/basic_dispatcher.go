@@ -120,6 +120,7 @@ type BasicDispatcher struct {
 	// or just a part of the table (span). When true, the dispatcher handles the entire table;
 	// when false, it only handles a portion of the table.
 	isCompleteTable bool
+	enabledSplit    bool
 
 	// startTs is the timestamp that the dispatcher need to receive and flush events.
 	startTs uint64
@@ -195,6 +196,7 @@ type BasicDispatcher struct {
 func NewBasicDispatcher(
 	id common.DispatcherID,
 	tableSpan *heartbeatpb.TableSpan,
+	enabledSplit bool,
 	startTs uint64,
 	schemaID int64,
 	schemaIDToDispatchers *SchemaIDToDispatchers,
@@ -208,6 +210,7 @@ func NewBasicDispatcher(
 	dispatcher := &BasicDispatcher{
 		id:                     id,
 		tableSpan:              tableSpan,
+		enabledSplit:           enabledSplit,
 		isCompleteTable:        common.IsCompleteSpan(tableSpan),
 		startTs:                startTs,
 		skipSyncpointAtStartTs: skipSyncpointAtStartTs,
@@ -820,6 +823,9 @@ func (d *BasicDispatcher) Remove() {
 // TryClose will return the watermark of current dispatcher, and return true when the dispatcher finished sending events to sink.
 // DispatcherManager will clean the dispatcher info after Remove() is called.
 func (d *BasicDispatcher) TryClose() (w heartbeatpb.Watermark, ok bool) {
+	failpoint.Inject("NotReadyToCloseDispatcher", func() {
+		failpoint.Return(w, false)
+	})
 	// If sink is normal(not meet error), we need to wait all the events in sink to flushed downstream successfully
 	// If sink is not normal, we can close the dispatcher immediately.
 	if !d.sink.IsNormal() || (d.tableProgress.Empty() && !d.duringHandleEvents.Load()) {
@@ -877,4 +883,8 @@ func (d *BasicDispatcher) removeDispatcher() {
 			zap.Any("identifier", identifier),
 			zap.Stringer("dispatcherID", d.id))
 	}
+}
+
+func (d *BasicDispatcher) IsEnabledSplit() bool {
+	return d.enabledSplit
 }

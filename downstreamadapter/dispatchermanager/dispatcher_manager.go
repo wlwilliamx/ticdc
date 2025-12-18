@@ -84,6 +84,9 @@ type DispatcherManager struct {
 	dispatcherMap *DispatcherMap[*dispatcher.EventDispatcher]
 	// redoDispatcherMap restore all the redo dispatchers in the DispatcherManager, including redo table trigger event dispatcher
 	redoDispatcherMap *DispatcherMap[*dispatcher.RedoDispatcher]
+	// currentOperatorMap stores the current operators for each dispatcher
+	currentOperatorMap     sync.Map // map[span]*dispatcher.CurrentOperator
+	redoCurrentOperatorMap sync.Map // map[span]*dispatcher.CurrentOperator
 	// schemaIDToDispatchers is shared in the DispatcherManager,
 	// it store all the infos about schemaID->Dispatchers
 	// Dispatchers may change the schemaID when meets some special events, such as rename ddl
@@ -169,15 +172,17 @@ func NewDispatcherManager(
 	}
 
 	manager := &DispatcherManager{
-		dispatcherMap:         newDispatcherMap[*dispatcher.EventDispatcher](),
-		changefeedID:          changefeedID,
-		keyspaceID:            keyspaceID,
-		pdClock:               pdClock,
-		cancel:                cancel,
-		config:                cfConfig,
-		latestWatermark:       NewWatermark(0),
-		schemaIDToDispatchers: dispatcher.NewSchemaIDToDispatchers(),
-		sinkQuota:             cfConfig.MemoryQuota,
+		dispatcherMap:          newDispatcherMap[*dispatcher.EventDispatcher](),
+		currentOperatorMap:     sync.Map{},
+		redoCurrentOperatorMap: sync.Map{},
+		changefeedID:           changefeedID,
+		keyspaceID:             keyspaceID,
+		pdClock:                pdClock,
+		cancel:                 cancel,
+		config:                 cfConfig,
+		latestWatermark:        NewWatermark(0),
+		schemaIDToDispatchers:  dispatcher.NewSchemaIDToDispatchers(),
+		sinkQuota:              cfConfig.MemoryQuota,
 
 		metricTableTriggerEventDispatcherCount: metrics.TableTriggerEventDispatcherGauge.WithLabelValues(changefeedID.Keyspace(), changefeedID.Name(), "eventDispatcher"),
 		metricEventDispatcherCount:             metrics.EventDispatcherGauge.WithLabelValues(changefeedID.Keyspace(), changefeedID.Name(), "eventDispatcher"),
@@ -383,7 +388,7 @@ func (e *DispatcherManager) newEventDispatchers(infos map[common.DispatcherID]di
 	start := time.Now()
 	currentPdTs := e.pdClock.CurrentTS()
 
-	dispatcherIds, tableIds, startTsList, tableSpans, schemaIds := prepareCreateDispatcher(infos, e.dispatcherMap)
+	dispatcherIds, tableIds, startTsList, tableSpans, schemaIds, enabledSplits := prepareCreateDispatcher(infos, e.dispatcherMap)
 	if len(dispatcherIds) == 0 {
 		return nil
 	}
@@ -422,6 +427,7 @@ func (e *DispatcherManager) newEventDispatchers(infos map[common.DispatcherID]di
 		d := dispatcher.NewEventDispatcher(
 			id,
 			tableSpans[idx],
+			enabledSplits[idx],
 			uint64(newStartTsList[idx]),
 			schemaIds[idx],
 			e.schemaIDToDispatchers,
@@ -765,6 +771,7 @@ func (e *DispatcherManager) mergeEventDispatcher(dispatcherIDs []common.Dispatch
 	mergedDispatcher := dispatcher.NewEventDispatcher(
 		mergedDispatcherID,
 		mergedSpan,
+		true,        // enabledSplit
 		fakeStartTs, // real startTs will be calculated later.
 		schemaID,
 		e.schemaIDToDispatchers,
@@ -871,8 +878,13 @@ func (e *DispatcherManager) close(removeChangefeed bool) {
 
 // cleanEventDispatcher is called when the event dispatcher is removed successfully.
 func (e *DispatcherManager) cleanEventDispatcher(id common.DispatcherID, schemaID int64) {
+	var spanStr string
+	if d, ok := e.dispatcherMap.m.Load(id); ok {
+		spanStr = d.(*dispatcher.EventDispatcher).GetTableSpan().String()
+	}
 	e.dispatcherMap.Delete(id)
 	e.schemaIDToDispatchers.Delete(schemaID, id)
+	e.currentOperatorMap.Delete(spanStr)
 	if e.tableTriggerEventDispatcher != nil && e.tableTriggerEventDispatcher.GetId() == id {
 		e.tableTriggerEventDispatcher = nil
 		e.metricTableTriggerEventDispatcherCount.Dec()

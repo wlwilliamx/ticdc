@@ -196,19 +196,31 @@ func (h *SchedulerDispatcherRequestHandler) Handle(dispatcherManager *Dispatcher
 			log.Warn("scheduleDispatcherRequest is nil, skip")
 			continue
 		}
+		// If there is already an operator for the span, skip this request.
+		_, exists := dispatcherManager.currentOperatorMap.Load(req.Config.Span.String())
+		if exists {
+			continue
+		}
+		_, redoExists := dispatcherManager.redoCurrentOperatorMap.Load(req.Config.Span.String())
+		if redoExists {
+			continue
+		}
 		config := req.Config
 		dispatcherID := common.NewDispatcherIDFromPB(config.DispatcherID)
 		switch req.ScheduleAction {
 		case heartbeatpb.ScheduleAction_Create:
 			info := dispatcherCreateInfo{
-				Id:        dispatcherID,
-				TableSpan: config.Span,
-				StartTs:   config.StartTs,
-				SchemaID:  config.SchemaID,
+				Id:           dispatcherID,
+				TableSpan:    config.Span,
+				StartTs:      config.StartTs,
+				SchemaID:     config.SchemaID,
+				EnabledSplit: config.EnabledSplit,
 			}
 			if common.IsRedoMode(config.Mode) {
+				dispatcherManager.redoCurrentOperatorMap.Store(req.Config.Span.String(), req)
 				redoInfos[dispatcherID] = info
 			} else {
+				dispatcherManager.currentOperatorMap.Store(req.Config.Span.String(), req)
 				infos[dispatcherID] = info
 			}
 		case heartbeatpb.ScheduleAction_Remove:
@@ -216,8 +228,10 @@ func (h *SchedulerDispatcherRequestHandler) Handle(dispatcherManager *Dispatcher
 				log.Error("invalid remove dispatcher request count in one batch", zap.Int("count", len(reqs)))
 			}
 			if common.IsRedoMode(config.Mode) {
+				dispatcherManager.redoCurrentOperatorMap.Store(req.Config.Span.String(), req)
 				removeDispatcher(dispatcherManager, dispatcherID, dispatcherManager.redoDispatcherMap, dispatcherManager.redoSink.SinkType())
 			} else {
+				dispatcherManager.currentOperatorMap.Store(req.Config.Span.String(), req)
 				removeDispatcher(dispatcherManager, dispatcherID, dispatcherManager.dispatcherMap, dispatcherManager.sink.SinkType())
 			}
 		}
@@ -228,11 +242,17 @@ func (h *SchedulerDispatcherRequestHandler) Handle(dispatcherManager *Dispatcher
 		if err != nil {
 			dispatcherManager.handleError(context.Background(), err)
 		}
+		for _, info := range redoInfos {
+			dispatcherManager.redoCurrentOperatorMap.Delete(info.TableSpan.String())
+		}
 	}
 	if len(infos) > 0 {
 		err := dispatcherManager.newEventDispatchers(infos, false)
 		if err != nil {
 			dispatcherManager.handleError(context.Background(), err)
+		}
+		for _, info := range infos {
+			dispatcherManager.currentOperatorMap.Delete(info.TableSpan.String())
 		}
 	}
 	return false

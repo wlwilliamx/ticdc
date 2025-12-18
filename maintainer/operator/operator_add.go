@@ -34,6 +34,8 @@ type AddDispatcherOperator struct {
 	finished       atomic.Bool
 	removed        atomic.Bool
 	spanController *span.Controller
+	// This add operator may be a part of move/split operator
+	operatorType heartbeatpb.OperatorType
 
 	sendThrottler sendThrottler
 }
@@ -42,6 +44,7 @@ func NewAddDispatcherOperator(
 	spanController *span.Controller,
 	replicaSet *replica.SpanReplication,
 	dest node.ID,
+	operatorType heartbeatpb.OperatorType,
 ) *AddDispatcherOperator {
 	return &AddDispatcherOperator{
 		replicaSet:     replicaSet,
@@ -81,7 +84,7 @@ func (m *AddDispatcherOperator) Schedule() *messaging.TargetMessage {
 	if !m.sendThrottler.shouldSend() {
 		return nil
 	}
-	return m.replicaSet.NewAddDispatcherMessage(m.dest)
+	return m.replicaSet.NewAddDispatcherMessage(m.dest, m.operatorType)
 }
 
 // OnNodeRemove is called when node offline, and the replicaset must already move to absent status and will be scheduled again
@@ -110,6 +113,9 @@ func (m *AddDispatcherOperator) OnTaskRemoved() {
 }
 
 func (m *AddDispatcherOperator) Start() {
+	if m.removed.Load() || m.finished.Load() {
+		return
+	}
 	m.spanController.BindSpanToNode("", m.dest, m.replicaSet)
 }
 

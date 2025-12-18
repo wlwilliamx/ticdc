@@ -91,13 +91,13 @@ func (m *MoveDispatcherOperator) Schedule() *messaging.TargetMessage {
 		if !m.sendThrottler.shouldSend() {
 			return nil
 		}
-		return m.replicaSet.NewAddDispatcherMessage(m.dest)
+		return m.replicaSet.NewAddDispatcherMessage(m.dest, heartbeatpb.OperatorType_O_Move)
 	}
 
 	if !m.sendThrottler.shouldSend() {
 		return nil
 	}
-	return m.replicaSet.NewRemoveDispatcherMessage(m.origin)
+	return m.replicaSet.NewRemoveDispatcherMessage(m.origin, heartbeatpb.OperatorType_O_Move)
 }
 
 func (m *MoveDispatcherOperator) OnNodeRemove(n node.ID) {

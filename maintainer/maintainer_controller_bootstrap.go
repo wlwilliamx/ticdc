@@ -452,7 +452,17 @@ func (c *Controller) restoreCurrentWorkingOperators(
 				switch req.OperatorType {
 				case heartbeatpb.OperatorType_O_Add, heartbeatpb.OperatorType_O_Move, heartbeatpb.OperatorType_O_Split:
 					op := operator.NewAddDispatcherOperator(spanController, replicaSet, node, heartbeatpb.OperatorType_O_Add)
-					c.operatorController.AddOperator(op)
+					if ok := c.operatorController.AddOperator(op); !ok {
+						log.Error("add operator failed when dealing current working operators in bootstrap, should not happen",
+							zap.String("nodeID", node.String()),
+							zap.String("changefeed", resp.ChangefeedID.String()),
+							zap.String("dispatcher", op.ID().String()),
+							zap.String("originOperatorType", req.OperatorType.String()),
+							zap.Any("operator", op),
+							zap.Any("replicaSet", replicaSet),
+						)
+						return errors.ErrOperatorIsNil.GenWithStack("add operator failed when bootstrap")
+					}
 					op.Start()
 				}
 			case heartbeatpb.ScheduleAction_Remove:
@@ -464,7 +474,17 @@ func (c *Controller) restoreCurrentWorkingOperators(
 						heartbeatpb.OperatorType_O_Remove,
 						nil,
 					)
-					c.operatorController.AddOperator(op)
+					if ok := c.operatorController.AddOperator(op); !ok {
+						log.Error("add operator failed when dealing current working operators in bootstrap, should not happen",
+							zap.String("nodeID", node.String()),
+							zap.String("changefeed", resp.ChangefeedID.String()),
+							zap.String("dispatcher", op.ID().String()),
+							zap.String("originOperatorType", req.OperatorType.String()),
+							zap.Any("operator", op),
+							zap.Any("replicaSet", replicaSet),
+						)
+						return errors.ErrOperatorIsNil.GenWithStack("add operator failed when bootstrap")
+					}
 					op.Start()
 				case heartbeatpb.OperatorType_O_Move, heartbeatpb.OperatorType_O_Split:
 					op := operator.NewRemoveDispatcherOperator(
@@ -475,7 +495,17 @@ func (c *Controller) restoreCurrentWorkingOperators(
 							spanController.MarkAbsentWithoutLock(replicaSet)
 						},
 					)
-					c.operatorController.AddOperator(op)
+					if ok := c.operatorController.AddOperator(op); !ok {
+						log.Error("add operator failed when dealing current working operators in bootstrap, should not happen",
+							zap.String("nodeID", node.String()),
+							zap.String("changefeed", resp.ChangefeedID.String()),
+							zap.String("dispatcher", op.ID().String()),
+							zap.String("originOperatorType", req.OperatorType.String()),
+							zap.Any("operator", op),
+							zap.Any("replicaSet", replicaSet),
+						)
+						return errors.ErrOperatorIsNil.GenWithStack("add operator failed when bootstrap")
+					}
 					op.Start()
 				}
 			}

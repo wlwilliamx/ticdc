@@ -218,9 +218,21 @@ func (h *SchedulerDispatcherRequestHandler) Handle(dispatcherManager *Dispatcher
 			}
 			if common.IsRedoMode(config.Mode) {
 				dispatcherManager.redoCurrentOperatorMap.Store(req.Config.Span.String(), req)
+				log.Debug("store current working add operator for redo dispatcher",
+					zap.String("changefeedID", req.ChangefeedID.String()),
+					zap.String("dispatcherID", dispatcherID.String()),
+					zap.String("span", req.Config.Span.String()),
+					zap.Any("operator", req),
+				)
 				redoInfos[dispatcherID] = info
 			} else {
 				dispatcherManager.currentOperatorMap.Store(req.Config.Span.String(), req)
+				log.Debug("store current working add operator",
+					zap.String("changefeedID", req.ChangefeedID.String()),
+					zap.String("dispatcherID", dispatcherID.String()),
+					zap.String("span", req.Config.Span.String()),
+					zap.Any("operator", req),
+				)
 				infos[dispatcherID] = info
 			}
 		case heartbeatpb.ScheduleAction_Remove:
@@ -229,9 +241,21 @@ func (h *SchedulerDispatcherRequestHandler) Handle(dispatcherManager *Dispatcher
 			}
 			if common.IsRedoMode(config.Mode) {
 				dispatcherManager.redoCurrentOperatorMap.Store(req.Config.Span.String(), req)
+				log.Debug("store current working remove operator for redo dispatcher",
+					zap.String("changefeedID", req.ChangefeedID.String()),
+					zap.String("dispatcherID", dispatcherID.String()),
+					zap.String("span", req.Config.Span.String()),
+					zap.Any("operator", req),
+				)
 				removeDispatcher(dispatcherManager, dispatcherID, dispatcherManager.redoDispatcherMap, dispatcherManager.redoSink.SinkType())
 			} else {
 				dispatcherManager.currentOperatorMap.Store(req.Config.Span.String(), req)
+				log.Debug("store current working remove operator",
+					zap.String("changefeedID", req.ChangefeedID.String()),
+					zap.String("dispatcherID", dispatcherID.String()),
+					zap.String("span", req.Config.Span.String()),
+					zap.Any("operator", req),
+				)
 				removeDispatcher(dispatcherManager, dispatcherID, dispatcherManager.dispatcherMap, dispatcherManager.sink.SinkType())
 			}
 		}
@@ -243,7 +267,18 @@ func (h *SchedulerDispatcherRequestHandler) Handle(dispatcherManager *Dispatcher
 			dispatcherManager.handleError(context.Background(), err)
 		}
 		for _, info := range redoInfos {
-			dispatcherManager.redoCurrentOperatorMap.Delete(info.TableSpan.String())
+			if v, ok := dispatcherManager.redoCurrentOperatorMap.Load(info.TableSpan.String()); ok {
+				req := v.(SchedulerDispatcherRequest)
+				log.Debug("delete current working add operator for redo dispatcher",
+					zap.String("changefeedID", dispatcherManager.changefeedID.String()),
+					zap.String("dispatcherID", info.Id.String()),
+					zap.String("span", info.TableSpan.String()),
+					zap.Any("operator", req),
+				)
+				dispatcherManager.redoCurrentOperatorMap.Delete(info.TableSpan.String())
+			} else {
+				log.Error("current working operator not found for redo dispatcher, should not happen", zap.String("span", info.TableSpan.String()))
+			}
 		}
 	}
 	if len(infos) > 0 {
@@ -252,7 +287,18 @@ func (h *SchedulerDispatcherRequestHandler) Handle(dispatcherManager *Dispatcher
 			dispatcherManager.handleError(context.Background(), err)
 		}
 		for _, info := range infos {
-			dispatcherManager.currentOperatorMap.Delete(info.TableSpan.String())
+			if v, ok := dispatcherManager.currentOperatorMap.Load(info.TableSpan.String()); ok {
+				req := v.(SchedulerDispatcherRequest)
+				log.Debug("delete current working add operator",
+					zap.String("changefeedID", dispatcherManager.changefeedID.String()),
+					zap.String("dispatcherID", info.Id.String()),
+					zap.String("span", info.TableSpan.String()),
+					zap.Any("operator", req),
+				)
+				dispatcherManager.currentOperatorMap.Delete(info.TableSpan.String())
+			} else {
+				log.Error("current working operator not found, should not happen", zap.String("span", info.TableSpan.String()))
+			}
 		}
 	}
 	return false

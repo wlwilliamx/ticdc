@@ -221,6 +221,11 @@ func (e *DispatcherManager) cleanRedoDispatcher(id common.DispatcherID, schemaID
 	e.redoDispatcherMap.Delete(id)
 	e.redoSchemaIDToDispatchers.Delete(schemaID, id)
 	e.redoCurrentOperatorMap.Delete(spanStr)
+	log.Debug("delete current working remove operator for redo dispatcher",
+		zap.String("changefeedID", e.changefeedID.String()),
+		zap.String("dispatcherID", id.String()),
+		zap.String("span", spanStr),
+	)
 	if e.redoTableTriggerEventDispatcher != nil && e.redoTableTriggerEventDispatcher.GetId() == id {
 		e.redoTableTriggerEventDispatcher = nil
 		e.metricRedoTableTriggerEventDispatcherCount.Dec()

@@ -921,6 +921,11 @@ func (e *DispatcherManager) cleanEventDispatcher(id common.DispatcherID, schemaI
 	e.dispatcherMap.Delete(id)
 	e.schemaIDToDispatchers.Delete(schemaID, id)
 	e.currentOperatorMap.Delete(spanStr)
+	log.Debug("delete current working remove operator",
+		zap.String("changefeedID", e.changefeedID.String()),
+		zap.String("dispatcherID", id.String()),
+		zap.String("span", spanStr),
+	)
 	if e.tableTriggerEventDispatcher != nil && e.tableTriggerEventDispatcher.GetId() == id {
 		e.tableTriggerEventDispatcher = nil
 		e.metricTableTriggerEventDispatcherCount.Dec()

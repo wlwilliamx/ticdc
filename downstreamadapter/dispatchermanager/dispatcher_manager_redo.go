@@ -118,7 +118,7 @@ func (e *DispatcherManager) NewRedoTableTriggerEventDispatcher(id *heartbeatpb.D
 func (e *DispatcherManager) newRedoDispatchers(infos map[common.DispatcherID]dispatcherCreateInfo, removeDDLTs bool) error {
 	start := time.Now()
 
-	dispatcherIds, tableIds, startTsList, tableSpans, schemaIds, enabledSplits := prepareCreateDispatcher(infos, e.redoDispatcherMap)
+	dispatcherIds, tableIds, startTsList, tableSpans, schemaIds := prepareCreateDispatcher(infos, e.redoDispatcherMap)
 	if len(dispatcherIds) == 0 {
 		return nil
 	}
@@ -154,7 +154,6 @@ func (e *DispatcherManager) newRedoDispatchers(infos map[common.DispatcherID]dis
 		rd := dispatcher.NewRedoDispatcher(
 			id,
 			tableSpans[idx],
-			enabledSplits[idx],
 			uint64(newStartTsList[idx]),
 			schemaIds[idx],
 			e.redoSchemaIDToDispatchers,
@@ -217,7 +216,6 @@ func (e *DispatcherManager) mergeRedoDispatcher(dispatcherIDs []common.Dispatche
 	mergedDispatcher := dispatcher.NewRedoDispatcher(
 		mergedDispatcherID,
 		mergedSpan,
-		true,
 		fakeStartTs, // real startTs will be calculated later.
 		schemaID,
 		e.redoSchemaIDToDispatchers,

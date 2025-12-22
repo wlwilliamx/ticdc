@@ -232,11 +232,10 @@ func (h *SchedulerDispatcherRequestHandler) Handle(dispatcherManager *Dispatcher
 		switch req.ScheduleAction {
 		case heartbeatpb.ScheduleAction_Create:
 			info := dispatcherCreateInfo{
-				Id:           dispatcherID,
-				TableSpan:    config.Span,
-				StartTs:      config.StartTs,
-				SchemaID:     config.SchemaID,
-				EnabledSplit: config.EnabledSplit,
+				Id:        dispatcherID,
+				TableSpan: config.Span,
+				StartTs:   config.StartTs,
+				SchemaID:  config.SchemaID,
 			}
 			if common.IsRedoMode(config.Mode) {
 				dispatcherManager.redoCurrentOperatorMap.Store(operatorKey, req)

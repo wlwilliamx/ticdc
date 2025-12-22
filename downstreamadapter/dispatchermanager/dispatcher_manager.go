@@ -392,7 +392,7 @@ func (e *DispatcherManager) newEventDispatchers(infos map[common.DispatcherID]di
 	start := time.Now()
 	currentPdTs := e.pdClock.CurrentTS()
 
-	dispatcherIds, tableIds, startTsList, tableSpans, schemaIds, enabledSplits := prepareCreateDispatcher(infos, e.dispatcherMap)
+	dispatcherIds, tableIds, startTsList, tableSpans, schemaIds := prepareCreateDispatcher(infos, e.dispatcherMap)
 	if len(dispatcherIds) == 0 {
 		return nil
 	}
@@ -431,7 +431,6 @@ func (e *DispatcherManager) newEventDispatchers(infos map[common.DispatcherID]di
 		d := dispatcher.NewEventDispatcher(
 			id,
 			tableSpans[idx],
-			enabledSplits[idx],
 			uint64(newStartTsList[idx]),
 			schemaIds[idx],
 			e.schemaIDToDispatchers,
@@ -821,7 +820,6 @@ func (e *DispatcherManager) mergeEventDispatcher(dispatcherIDs []common.Dispatch
 	mergedDispatcher := dispatcher.NewEventDispatcher(
 		mergedDispatcherID,
 		mergedSpan,
-		true,        // enabledSplit
 		fakeStartTs, // real startTs will be calculated later.
 		schemaID,
 		e.schemaIDToDispatchers,

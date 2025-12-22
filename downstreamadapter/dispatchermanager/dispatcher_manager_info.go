@@ -25,11 +25,10 @@ import (
 // event_dispatcher_mananger_info.go is used to store the basic info and function of the event dispatcher manager
 
 type dispatcherCreateInfo struct {
-	Id           common.DispatcherID
-	TableSpan    *heartbeatpb.TableSpan
-	StartTs      uint64
-	SchemaID     int64
-	EnabledSplit bool
+	Id        common.DispatcherID
+	TableSpan *heartbeatpb.TableSpan
+	StartTs   uint64
+	SchemaID  int64
 }
 
 type cleanMap struct {

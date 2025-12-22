@@ -54,7 +54,6 @@ type EventDispatcher struct {
 func NewEventDispatcher(
 	id common.DispatcherID,
 	tableSpan *heartbeatpb.TableSpan,
-	enabledSplit bool,
 	startTs uint64,
 	schemaID int64,
 	schemaIDToDispatchers *SchemaIDToDispatchers,
@@ -69,7 +68,6 @@ func NewEventDispatcher(
 	basicDispatcher := NewBasicDispatcher(
 		id,
 		tableSpan,
-		enabledSplit,
 		startTs,
 		schemaID,
 		schemaIDToDispatchers,

@@ -375,14 +375,13 @@ func createBootstrapResponse(
 		})
 		manager.GetRedoCurrentOperatorMap().Range(func(key, value any) bool {
 			req := value.(*heartbeatpb.ScheduleDispatcherRequest)
-			d, ok := manager.GetRedoDispatcherMap().Get(common.NewDispatcherIDFromPB(req.Config.DispatcherID))
+			_, ok := manager.GetRedoDispatcherMap().Get(common.NewDispatcherIDFromPB(req.Config.DispatcherID))
 			if !ok {
 				log.Error("Redo dispatcher not found, this should not happen",
 					zap.String("changefeed", changefeedID.String()),
 					zap.String("dispatcherID", req.Config.DispatcherID.String()),
 				)
 			}
-			req.Config.EnabledSplit = d.IsEnabledSplit()
 
 			response.Operators = append(response.Operators, &heartbeatpb.ScheduleDispatcherRequest{
 				ChangefeedID:   req.ChangefeedID,
@@ -406,14 +405,13 @@ func createBootstrapResponse(
 	})
 	manager.GetCurrentOperatorMap().Range(func(key, value any) bool {
 		req := value.(*heartbeatpb.ScheduleDispatcherRequest)
-		d, ok := manager.GetDispatcherMap().Get(common.NewDispatcherIDFromPB(req.Config.DispatcherID))
+		_, ok := manager.GetDispatcherMap().Get(common.NewDispatcherIDFromPB(req.Config.DispatcherID))
 		if !ok {
 			log.Error("Dispatcher not found, this should not happen",
 				zap.String("changefeed", changefeedID.String()),
 				zap.String("dispatcherID", req.Config.DispatcherID.String()),
 			)
 		}
-		req.Config.EnabledSplit = d.IsEnabledSplit()
 		response.Operators = append(response.Operators, &heartbeatpb.ScheduleDispatcherRequest{
 			ChangefeedID:   req.ChangefeedID,
 			Config:         req.Config,

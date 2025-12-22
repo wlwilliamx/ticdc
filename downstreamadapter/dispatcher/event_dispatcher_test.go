@@ -87,7 +87,6 @@ func newDispatcherForTest(sink sink.Sink, tableSpan *heartbeatpb.TableSpan) *Eve
 	return NewEventDispatcher(
 		common.NewDispatcherID(),
 		tableSpan,
-		false,
 		common.Ts(0), // startTs
 		1,            // schemaID
 		NewSchemaIDToDispatchers(),
@@ -830,7 +829,6 @@ func TestDispatcherSplittableCheck(t *testing.T) {
 	dispatcher := NewEventDispatcher(
 		common.NewDispatcherID(),
 		tableSpan,
-		false,
 		common.Ts(0), // startTs
 		1,            // schemaID
 		NewSchemaIDToDispatchers(),
@@ -937,7 +935,6 @@ func TestDispatcher_SkipDMLAsStartTs_FilterCorrectly(t *testing.T) {
 	dispatcher := NewEventDispatcher(
 		common.NewDispatcherID(),
 		tableSpan,
-		false,
 		common.Ts(99), // startTs = 99 (ddlTs - 1)
 		1,             // schemaID
 		NewSchemaIDToDispatchers(),
@@ -1017,7 +1014,6 @@ func TestDispatcher_SkipDMLAsStartTs_Disabled(t *testing.T) {
 	dispatcher := NewEventDispatcher(
 		common.NewDispatcherID(),
 		tableSpan,
-		false,
 		common.Ts(99), // startTs = 99
 		1,
 		NewSchemaIDToDispatchers(),

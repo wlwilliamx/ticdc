@@ -64,7 +64,6 @@ func createTestDispatcher(t *testing.T, manager *DispatcherManager, id common.Di
 	d := dispatcher.NewEventDispatcher(
 		id,
 		span,
-		false,
 		0,
 		0,
 		dispatcher.NewSchemaIDToDispatchers(),

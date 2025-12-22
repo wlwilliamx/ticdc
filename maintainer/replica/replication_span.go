@@ -239,7 +239,6 @@ func (r *SpanReplication) NewAddDispatcherMessage(server node.ID, operatorType h
 				Span:         r.Span,
 				StartTs:      r.status.Load().CheckpointTs,
 				Mode:         r.GetMode(),
-				EnabledSplit: r.enabledSplit,
 			},
 			ScheduleAction: heartbeatpb.ScheduleAction_Create,
 			OperatorType:   operatorType,

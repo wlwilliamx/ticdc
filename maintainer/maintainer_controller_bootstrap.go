@@ -109,7 +109,7 @@ func (c *Controller) FinishBootstrap(
 
 	// Step 4: Process tables and build schema info
 	// restore current working operators first
-	if err := c.restoreCurrentWorkingOperators(allNodesResp); err != nil {
+	if err := c.restoreCurrentWorkingOperators(allNodesResp, tableSplitMap); err != nil {
 		return nil, err
 	}
 	schemaInfos := c.processTablesAndBuildSchemaInfo(tables, workingTaskMap, redoWorkingTaskMap, isMysqlCompatibleBackend)
@@ -424,6 +424,7 @@ func findHoles(currentSpan utils.Map[*heartbeatpb.TableSpan, *replica.SpanReplic
 
 func (c *Controller) restoreCurrentWorkingOperators(
 	allNodesResp map[node.ID]*heartbeatpb.MaintainerBootstrapResponse,
+	tableSplitMap map[int64]bool,
 ) error {
 	for node, resp := range allNodesResp {
 		for _, req := range resp.Operators {
@@ -444,7 +445,7 @@ func (c *Controller) restoreCurrentWorkingOperators(
 				req.Config.Span,
 				req.Config.StartTs,
 				req.Config.Mode,
-				req.Config.EnabledSplit,
+				spanController.ShouldEnableSplit(tableSplitMap[req.Config.Span.TableID]),
 			)
 			spanController.AddAbsentReplicaSet(replicaSet)
 			switch req.ScheduleAction {

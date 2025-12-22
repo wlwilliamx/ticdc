@@ -120,7 +120,6 @@ type BasicDispatcher struct {
 	// or just a part of the table (span). When true, the dispatcher handles the entire table;
 	// when false, it only handles a portion of the table.
 	isCompleteTable bool
-	enabledSplit    bool
 
 	// startTs is the timestamp that the dispatcher need to receive and flush events.
 	startTs uint64
@@ -196,7 +195,6 @@ type BasicDispatcher struct {
 func NewBasicDispatcher(
 	id common.DispatcherID,
 	tableSpan *heartbeatpb.TableSpan,
-	enabledSplit bool,
 	startTs uint64,
 	schemaID int64,
 	schemaIDToDispatchers *SchemaIDToDispatchers,
@@ -210,7 +208,6 @@ func NewBasicDispatcher(
 	dispatcher := &BasicDispatcher{
 		id:                     id,
 		tableSpan:              tableSpan,
-		enabledSplit:           enabledSplit,
 		isCompleteTable:        common.IsCompleteSpan(tableSpan),
 		startTs:                startTs,
 		skipSyncpointAtStartTs: skipSyncpointAtStartTs,
@@ -912,8 +909,4 @@ func (d *BasicDispatcher) removeDispatcher() {
 			zap.Any("identifier", identifier),
 			zap.Stringer("dispatcherID", d.id))
 	}
-}
-
-func (d *BasicDispatcher) IsEnabledSplit() bool {
-	return d.enabledSplit
 }

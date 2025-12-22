@@ -53,7 +53,6 @@ func newRedoDispatcherForTest(sink sink.Sink, tableSpan *heartbeatpb.TableSpan) 
 	return NewRedoDispatcher(
 		common.NewDispatcherID(),
 		tableSpan,
-		false,
 		common.Ts(0), // startTs
 		1,            // schemaID
 		NewSchemaIDToDispatchers(),

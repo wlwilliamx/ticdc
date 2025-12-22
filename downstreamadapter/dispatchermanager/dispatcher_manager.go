@@ -61,6 +61,7 @@ Architecture:
 - Each DispatcherManager has exactly one backend sink
 */
 type DispatcherManager struct {
+	ctx          context.Context
 	changefeedID common.ChangeFeedID
 	keyspaceID   uint32
 
@@ -114,7 +115,8 @@ type DispatcherManager struct {
 	// redoGlobalTs stores the resolved-ts of the redo metadata and blocks events in the common dispatcher where the commit-ts is greater than the resolved-ts.
 	redoGlobalTs atomic.Uint64
 
-	latestWatermark Watermark
+	latestWatermark     Watermark
+	latestRedoWatermark Watermark
 
 	closing atomic.Bool
 	closed  atomic.Bool
@@ -172,6 +174,7 @@ func NewDispatcherManager(
 	}
 
 	manager := &DispatcherManager{
+		ctx:                    ctx,
 		dispatcherMap:          newDispatcherMap[*dispatcher.EventDispatcher](),
 		currentOperatorMap:     sync.Map{},
 		redoCurrentOperatorMap: sync.Map{},
@@ -181,6 +184,7 @@ func NewDispatcherManager(
 		cancel:                 cancel,
 		config:                 cfConfig,
 		latestWatermark:        NewWatermark(0),
+		latestRedoWatermark:    NewWatermark(0),
 		schemaIDToDispatchers:  dispatcher.NewSchemaIDToDispatchers(),
 		sinkQuota:              cfConfig.MemoryQuota,
 
@@ -599,6 +603,12 @@ func (e *DispatcherManager) collectComponentStatusWhenChanged(ctx context.Contex
 			ResolvedTs:   watermark.ResolvedTs,
 			Seq:          watermark.Seq,
 		}
+		redoWatermark := e.latestRedoWatermark.Get()
+		newRedoWatermark := &heartbeatpb.Watermark{
+			CheckpointTs: redoWatermark.CheckpointTs,
+			ResolvedTs:   redoWatermark.ResolvedTs,
+			Seq:          redoWatermark.Seq,
+		}
 		select {
 		case <-ctx.Done():
 			return
@@ -608,6 +618,11 @@ func (e *DispatcherManager) collectComponentStatusWhenChanged(ctx context.Contex
 				newWatermark.Seq = tableSpanStatus.Seq
 				if tableSpanStatus.CheckpointTs != 0 && tableSpanStatus.CheckpointTs < newWatermark.CheckpointTs {
 					newWatermark.CheckpointTs = tableSpanStatus.CheckpointTs
+				}
+			} else {
+				newRedoWatermark.Seq = tableSpanStatus.Seq
+				if tableSpanStatus.CheckpointTs != 0 && tableSpanStatus.CheckpointTs < newRedoWatermark.CheckpointTs {
+					newRedoWatermark.CheckpointTs = tableSpanStatus.CheckpointTs
 				}
 			}
 			delay.Reset(10 * time.Millisecond)
@@ -623,6 +638,13 @@ func (e *DispatcherManager) collectComponentStatusWhenChanged(ctx context.Contex
 						if tableSpanStatus.CheckpointTs != 0 && tableSpanStatus.CheckpointTs < newWatermark.CheckpointTs {
 							newWatermark.CheckpointTs = tableSpanStatus.CheckpointTs
 						}
+					} else {
+						if newRedoWatermark.Seq < tableSpanStatus.Seq {
+							newRedoWatermark.Seq = tableSpanStatus.Seq
+						}
+						if tableSpanStatus.CheckpointTs != 0 && tableSpanStatus.CheckpointTs < newRedoWatermark.CheckpointTs {
+							newRedoWatermark.CheckpointTs = tableSpanStatus.CheckpointTs
+						}
 					}
 				case <-delay.C:
 					break loop
@@ -632,8 +654,7 @@ func (e *DispatcherManager) collectComponentStatusWhenChanged(ctx context.Contex
 			message.ChangefeedID = e.changefeedID.ToPB()
 			message.Statuses = statusMessage
 			message.Watermark = newWatermark
-			// FIXME: need to send redo watermark?
-			// message.RedoWatermark = newRedoWatermark
+			message.RedoWatermark = newRedoWatermark
 			e.heartbeatRequestQueue.Enqueue(&HeartBeatRequestWithTargetID{TargetID: e.GetMaintainerID(), Request: &message})
 		}
 	}
@@ -697,6 +718,7 @@ func (e *DispatcherManager) aggregateDispatcherHeartbeats(needCompleteStatus boo
 			}
 		})
 		message.RedoWatermark.Seq = redoSeq
+		e.latestRedoWatermark.Set(message.RedoWatermark)
 	}
 
 	seq := e.dispatcherMap.ForEach(func(id common.DispatcherID, dispatcherItem *dispatcher.EventDispatcher) {

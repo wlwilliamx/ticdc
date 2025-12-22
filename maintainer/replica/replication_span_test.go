@@ -39,6 +39,7 @@ func TestNewRemoveDispatcherMessage(t *testing.T) {
 	req := msg.Message[0].(*heartbeatpb.ScheduleDispatcherRequest)
 	require.Equal(t, heartbeatpb.ScheduleAction_Remove, req.ScheduleAction)
 	require.Equal(t, replicaSet.ID.ToPB(), req.Config.DispatcherID)
+	require.Equal(t, replicaSet.Span, req.Config.Span)
 	require.Equal(t, "node1", msg.To.String())
 }
 

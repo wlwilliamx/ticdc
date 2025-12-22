@@ -921,6 +921,7 @@ func (e *DispatcherManager) cleanEventDispatcher(id common.DispatcherID, schemaI
 	e.dispatcherMap.Delete(id)
 	e.schemaIDToDispatchers.Delete(schemaID, id)
 	e.currentOperatorMap.Delete(spanStr)
+	e.currentOperatorMap.Delete(id.String())
 	log.Debug("delete current working remove operator",
 		zap.String("changefeedID", e.changefeedID.String()),
 		zap.String("dispatcherID", id.String()),

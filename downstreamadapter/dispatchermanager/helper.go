@@ -173,6 +173,19 @@ func newSchedulerDispatcherRequestDynamicStream() dynstream.DynamicStream[int, c
 	return ds
 }
 
+func schedulerDispatcherKey(req *heartbeatpb.ScheduleDispatcherRequest) string {
+	if req == nil || req.Config == nil {
+		return ""
+	}
+	if req.Config.Span != nil {
+		return req.Config.Span.String()
+	}
+	if req.Config.DispatcherID != nil {
+		return common.NewDispatcherIDFromPB(req.Config.DispatcherID).String()
+	}
+	return ""
+}
+
 type SchedulerDispatcherRequest struct {
 	*heartbeatpb.ScheduleDispatcherRequest
 }
@@ -196,12 +209,21 @@ func (h *SchedulerDispatcherRequestHandler) Handle(dispatcherManager *Dispatcher
 			log.Warn("scheduleDispatcherRequest is nil, skip")
 			continue
 		}
+		if req.Config == nil {
+			log.Warn("scheduleDispatcherRequest config is nil, skip")
+			continue
+		}
+		operatorKey := schedulerDispatcherKey(req.ScheduleDispatcherRequest)
+		if operatorKey == "" {
+			log.Warn("scheduleDispatcherRequest has no valid operator key, skip")
+			continue
+		}
 		// If there is already an operator for the span, skip this request.
-		_, exists := dispatcherManager.currentOperatorMap.Load(req.Config.Span.String())
+		_, exists := dispatcherManager.currentOperatorMap.Load(operatorKey)
 		if exists {
 			continue
 		}
-		_, redoExists := dispatcherManager.redoCurrentOperatorMap.Load(req.Config.Span.String())
+		_, redoExists := dispatcherManager.redoCurrentOperatorMap.Load(operatorKey)
 		if redoExists {
 			continue
 		}
@@ -217,20 +239,20 @@ func (h *SchedulerDispatcherRequestHandler) Handle(dispatcherManager *Dispatcher
 				EnabledSplit: config.EnabledSplit,
 			}
 			if common.IsRedoMode(config.Mode) {
-				dispatcherManager.redoCurrentOperatorMap.Store(req.Config.Span.String(), req)
+				dispatcherManager.redoCurrentOperatorMap.Store(operatorKey, req)
 				log.Debug("store current working add operator for redo dispatcher",
 					zap.String("changefeedID", req.ChangefeedID.String()),
 					zap.String("dispatcherID", dispatcherID.String()),
-					zap.String("span", req.Config.Span.String()),
+					zap.String("span", operatorKey),
 					zap.Any("operator", req),
 				)
 				redoInfos[dispatcherID] = info
 			} else {
-				dispatcherManager.currentOperatorMap.Store(req.Config.Span.String(), req)
+				dispatcherManager.currentOperatorMap.Store(operatorKey, req)
 				log.Debug("store current working add operator",
 					zap.String("changefeedID", req.ChangefeedID.String()),
 					zap.String("dispatcherID", dispatcherID.String()),
-					zap.String("span", req.Config.Span.String()),
+					zap.String("span", operatorKey),
 					zap.Any("operator", req),
 				)
 				infos[dispatcherID] = info
@@ -240,20 +262,20 @@ func (h *SchedulerDispatcherRequestHandler) Handle(dispatcherManager *Dispatcher
 				log.Error("invalid remove dispatcher request count in one batch", zap.Int("count", len(reqs)))
 			}
 			if common.IsRedoMode(config.Mode) {
-				dispatcherManager.redoCurrentOperatorMap.Store(req.Config.Span.String(), req)
+				dispatcherManager.redoCurrentOperatorMap.Store(operatorKey, req)
 				log.Debug("store current working remove operator for redo dispatcher",
 					zap.String("changefeedID", req.ChangefeedID.String()),
 					zap.String("dispatcherID", dispatcherID.String()),
-					zap.String("span", req.Config.Span.String()),
+					zap.String("span", operatorKey),
 					zap.Any("operator", req),
 				)
 				removeDispatcher(dispatcherManager, dispatcherID, dispatcherManager.redoDispatcherMap, dispatcherManager.redoSink.SinkType())
 			} else {
-				dispatcherManager.currentOperatorMap.Store(req.Config.Span.String(), req)
+				dispatcherManager.currentOperatorMap.Store(operatorKey, req)
 				log.Debug("store current working remove operator",
 					zap.String("changefeedID", req.ChangefeedID.String()),
 					zap.String("dispatcherID", dispatcherID.String()),
-					zap.String("span", req.Config.Span.String()),
+					zap.String("span", operatorKey),
 					zap.Any("operator", req),
 				)
 				removeDispatcher(dispatcherManager, dispatcherID, dispatcherManager.dispatcherMap, dispatcherManager.sink.SinkType())

@@ -11,6 +11,48 @@ SINK_TYPE=$1
 CDC_COUNT=3
 DB_COUNT=4
 
+FAILPOINT_API="http://${CDC_HOST}:${CDC_PORT}/debug/failpoints"
+
+function enable_failpoint() {
+	local name=$1
+	local expr=$2
+	local payload
+	local http_code
+
+	payload=$(printf '{"name":"%s","expr":"%s"}' "$name" "$expr")
+	http_code=$(curl -s -o "$WORK_DIR/failpoint_enable.out" -w "%{http_code}" \
+		-X POST "$FAILPOINT_API" \
+		-H "Content-Type: application/json" \
+		--data "$payload")
+	if [ "$http_code" != "200" ]; then
+		echo "enable failpoint failed: $name"
+		cat "$WORK_DIR/failpoint_enable.out"
+		return 1
+	fi
+}
+
+function disable_failpoint() {
+	local name=$1
+	local http_code
+
+	http_code=$(curl -s -o "$WORK_DIR/failpoint_disable.out" -w "%{http_code}" \
+		-X DELETE "$FAILPOINT_API?name=$name")
+	if [ "$http_code" != "200" ]; then
+		echo "disable failpoint failed: $name"
+		cat "$WORK_DIR/failpoint_disable.out"
+		return 1
+	fi
+}
+
+function check_failpoint_enabled() {
+	local name=$1
+	if ! curl -s "$FAILPOINT_API" | grep -q "$name"; then
+		echo "failpoint not found in list: $name"
+		curl -s "$FAILPOINT_API"
+		return 1
+	fi
+}
+
 function run() {
 	# Validate sink type is mysql since this test is mysql specific
 	if [ "$SINK_TYPE" != "mysql" ]; then
@@ -22,11 +64,19 @@ function run() {
 
 	start_tidb_cluster --workdir $WORK_DIR
 
+	cat <<EOF >"$WORK_DIR/server.toml"
+[debug]
+enable-failpoint-api = true
+EOF
+
 	start_ts=$(run_cdc_cli_tso_query ${UP_PD_HOST_1} ${UP_PD_PORT_1})
 	run_sql "CREATE DATABASE ds_memory_control;"
 	go-ycsb load mysql -P $CUR/conf/workload -p mysql.host=${UP_TIDB_HOST} -p mysql.port=${UP_TIDB_PORT} -p mysql.user=root -p mysql.db=ds_memory_control
-	export GO_FAILPOINTS='github.com/pingcap/ticdc/utils/dynstream/PausePath=10%return(true)'
-	run_cdc_server --workdir $WORK_DIR --binary $CDC_BINARY
+	export GO_FAILPOINTS=''
+	run_cdc_server --workdir $WORK_DIR --binary $CDC_BINARY --config "$WORK_DIR/server.toml"
+
+	enable_failpoint "github.com/pingcap/ticdc/utils/dynstream/PausePath" "10%return(true)"
+	check_failpoint_enabled "github.com/pingcap/ticdc/utils/dynstream/PausePath"
 
 	SINK_URI="mysql://normal:123456@127.0.0.1:3306"
 	cdc_cli_changefeed create --start-ts=$start_ts --sink-uri="$SINK_URI"
@@ -36,11 +86,11 @@ function run() {
 	check_table_exists "ds_memory_control.finish_mark_1" ${DOWN_TIDB_HOST} ${DOWN_TIDB_PORT} 180
 	check_sync_diff $WORK_DIR $CUR/conf/diff_config.toml 180
 
-	export GO_FAILPOINTS=''
-	cleanup_process $CDC_BINARY
-	export GO_FAILPOINTS='github.com/pingcap/ticdc/utils/dynstream/PauseArea=10%return(true)'
+	# toggle failpoints dynamically.
+	disable_failpoint "github.com/pingcap/ticdc/utils/dynstream/PausePath"
+	enable_failpoint "github.com/pingcap/ticdc/utils/dynstream/PauseArea" "10%return(true)"
+	check_failpoint_enabled "github.com/pingcap/ticdc/utils/dynstream/PauseArea"
 
-	run_cdc_server --workdir $WORK_DIR --binary $CDC_BINARY
 
 	go-ycsb run mysql -P $CUR/conf/workload-2 -p mysql.host=${UP_TIDB_HOST} -p mysql.port=${UP_TIDB_PORT} -p mysql.user=root -p mysql.db=ds_memory_control
 
@@ -49,6 +99,7 @@ function run() {
 	check_table_exists "ds_memory_control.finish_mark_2" ${DOWN_TIDB_HOST} ${DOWN_TIDB_PORT} 300
 	check_sync_diff $WORK_DIR $CUR/conf/diff_config.toml 300
 
+	disable_failpoint "github.com/pingcap/ticdc/utils/dynstream/PauseArea"
 	cleanup_process $CDC_BINARY
 }
 

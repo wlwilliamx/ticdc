@@ -121,6 +121,8 @@ var defaultServerConfig = &ServerConfig{
 		DB:       NewDefaultDBConfig(),
 		Messages: defaultMessageConfig.Clone(),
 
+		EnableFailpointAPI: false,
+
 		Scheduler:    NewDefaultSchedulerConfig(),
 		Puller:       NewDefaultPullerConfig(),
 		EventStore:   NewDefaultEventStoreConfig(),

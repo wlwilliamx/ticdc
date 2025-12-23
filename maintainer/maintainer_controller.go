@@ -174,6 +174,9 @@ func (c *Controller) HandleStatus(from node.ID, statusList []*heartbeatpb.TableS
 		spanController.UpdateStatus(stm, status)
 		if status.ComponentStatus == heartbeatpb.ComponentState_Working && op == nil &&
 			!spanController.IsReplicating(stm) && stm.GetNodeID() != "" {
+			if spanController.IsDDLDispatcher(dispatcherID) {
+				continue
+			}
 			spanController.MarkSpanReplicating(stm)
 		}
 	}

@@ -143,12 +143,13 @@ func (c *Controller) HandleStatus(from node.ID, statusList []*heartbeatpb.TableS
 		spanController := c.getSpanController(status.Mode)
 
 		operatorController.UpdateOperatorStatus(dispatcherID, from, status)
+		op := operatorController.GetOperator(dispatcherID)
 		stm := spanController.GetTaskByID(dispatcherID)
 		if stm == nil {
 			if status.ComponentStatus != heartbeatpb.ComponentState_Working {
 				continue
 			}
-			if op := operatorController.GetOperator(dispatcherID); op == nil {
+			if op == nil {
 				// it's normal case when the span is not found in replication db
 				// the span is removed from replication db first, so here we only check if the span status is working or not
 				log.Warn("no span found, remove it",
@@ -171,6 +172,10 @@ func (c *Controller) HandleStatus(from node.ID, statusList []*heartbeatpb.TableS
 			continue
 		}
 		spanController.UpdateStatus(stm, status)
+		if status.ComponentStatus == heartbeatpb.ComponentState_Working && op == nil &&
+			!spanController.IsReplicating(stm) && stm.GetNodeID() != "" {
+			spanController.MarkSpanReplicating(stm)
+		}
 	}
 }
 

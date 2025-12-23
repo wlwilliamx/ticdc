@@ -187,6 +187,8 @@ message MaintainerBootstrapResponse {
     // - checkpoint_ts is set to 0
     uint64 checkpoint_ts = 4;
     repeated ScheduleDispatcherRequest operators = 5;
+    // merge_operators contains in-flight merge dispatcher requests for bootstrap recovery.
+    repeated MergeDispatcherRequest merge_operators = 6;
 }
 
 message MaintainerPostBootstrapRequest {

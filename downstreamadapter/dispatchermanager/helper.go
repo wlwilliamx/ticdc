@@ -180,6 +180,11 @@ func schedulerDispatcherKey(req *heartbeatpb.ScheduleDispatcherRequest) string {
 	if req.Config.Span != nil {
 		return req.Config.Span.String()
 	}
+	log.Info("nil span for operator",
+		zap.String("changefeedID", req.ChangefeedID.String()),
+		zap.String("dispatcherID", common.NewDispatcherIDFromPB(req.Config.DispatcherID).String()),
+		zap.Any("operator", req),
+	)
 	if req.Config.DispatcherID != nil {
 		return common.NewDispatcherIDFromPB(req.Config.DispatcherID).String()
 	}
@@ -221,10 +226,22 @@ func (h *SchedulerDispatcherRequestHandler) Handle(dispatcherManager *Dispatcher
 		// If there is already an operator for the span, skip this request.
 		_, exists := dispatcherManager.currentOperatorMap.Load(operatorKey)
 		if exists {
+			log.Warn("operator key exists, skip this request",
+				zap.String("changefeedID", req.ChangefeedID.String()),
+				zap.String("dispatcherID", common.NewDispatcherIDFromPB(req.Config.DispatcherID).String()),
+				zap.String("operatorKey", operatorKey),
+				zap.Any("operator", req),
+			)
 			continue
 		}
 		_, redoExists := dispatcherManager.redoCurrentOperatorMap.Load(operatorKey)
 		if redoExists {
+			log.Warn("redo operator key exists, skip this request",
+				zap.String("changefeedID", req.ChangefeedID.String()),
+				zap.String("dispatcherID", common.NewDispatcherIDFromPB(req.Config.DispatcherID).String()),
+				zap.String("operatorKey", operatorKey),
+				zap.Any("operator", req),
+			)
 			continue
 		}
 		config := req.Config
@@ -649,11 +666,19 @@ func (h *MergeDispatcherRequestHandler) Handle(dispatcherManager *DispatcherMana
 	}
 
 	mergeDispatcherRequest := reqs[0]
+	dispatcherManager.TrackMergeOperator(mergeDispatcherRequest.MergeDispatcherRequest)
 	dispatcherIDs := make([]common.DispatcherID, 0, len(mergeDispatcherRequest.DispatcherIDs))
 	for _, id := range mergeDispatcherRequest.DispatcherIDs {
 		dispatcherIDs = append(dispatcherIDs, common.NewDispatcherIDFromPB(id))
 	}
-	dispatcherManager.MergeDispatcher(dispatcherIDs, common.NewDispatcherIDFromPB(mergeDispatcherRequest.MergedDispatcherID), mergeDispatcherRequest.Mode)
+	task := dispatcherManager.MergeDispatcher(
+		dispatcherIDs,
+		common.NewDispatcherIDFromPB(mergeDispatcherRequest.MergedDispatcherID),
+		mergeDispatcherRequest.Mode,
+	)
+	if task == nil {
+		dispatcherManager.MaybeCleanupMergeOperator(mergeDispatcherRequest.MergeDispatcherRequest)
+	}
 	return false
 }
 

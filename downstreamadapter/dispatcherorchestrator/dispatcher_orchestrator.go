@@ -420,6 +420,7 @@ func createBootstrapResponse(
 		})
 		return true
 	})
+	response.MergeOperators = append(response.MergeOperators, manager.GetMergeOperators()...)
 
 	return response
 }

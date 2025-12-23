@@ -25,9 +25,6 @@ type DebugConfig struct {
 
 	Messages *MessagesConfig `toml:"messages" json:"messages"`
 
-	// EnableFailpointAPI controls whether the failpoint HTTP API is available.
-	EnableFailpointAPI bool `toml:"enable-failpoint-api" json:"enable_failpoint_api"`
-
 	// Scheduler is the configuration of the two-phase scheduler.
 	Scheduler *SchedulerConfig `toml:"scheduler" json:"scheduler"`
 

@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pingcap/ticdc/pkg/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -39,28 +38,10 @@ func newFailpointContext(method, path string, body string) (*gin.Context, *httpt
 func TestFailpointAPIEnableDisable(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	originalCfg := config.GetGlobalServerConfig()
-	t.Cleanup(func() {
-		config.StoreGlobalServerConfig(originalCfg)
-	})
-
 	api := OpenAPIV2{}
 	failpointName := "github.com/pingcap/ticdc/utils/dynstream/PauseArea"
 
-	disabledCfg := originalCfg.Clone()
-	disabledCfg.Debug.EnableFailpointAPI = false
-	config.StoreGlobalServerConfig(disabledCfg)
-
 	ctx, recorder := newFailpointContext(http.MethodPost, "/debug/failpoints",
-		`{"name":"`+failpointName+`","expr":"return(true)"}`)
-	api.EnableFailpoint(ctx)
-	require.Equal(t, http.StatusForbidden, recorder.Code)
-
-	enabledCfg := originalCfg.Clone()
-	enabledCfg.Debug.EnableFailpointAPI = true
-	config.StoreGlobalServerConfig(enabledCfg)
-
-	ctx, recorder = newFailpointContext(http.MethodPost, "/debug/failpoints",
 		`{"name":"`+failpointName+`","expr":"return(true)"}`)
 	api.EnableFailpoint(ctx)
 	require.Equal(t, http.StatusOK, recorder.Code)

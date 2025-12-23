@@ -14,7 +14,6 @@
 package v2
 
 import (
-	"errors"
 	"net/http"
 	"sort"
 	"strings"
@@ -23,7 +22,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pingcap/failpoint"
 	"github.com/pingcap/ticdc/pkg/api"
-	"github.com/pingcap/ticdc/pkg/config"
 	cerror "github.com/pingcap/ticdc/pkg/errors"
 )
 
@@ -72,22 +70,8 @@ func (r *failpointRegistry) snapshot() map[string]string {
 
 var failpointState = newFailpointRegistry()
 
-func failpointAPIEnabled() bool {
-	cfg := config.GetGlobalServerConfig()
-	if cfg == nil || cfg.Debug == nil {
-		return false
-	}
-	return cfg.Debug.EnableFailpointAPI
-}
-
 // EnableFailpoint enables a failpoint dynamically.
 func (h *OpenAPIV2) EnableFailpoint(c *gin.Context) {
-	if !failpointAPIEnabled() {
-		c.IndentedJSON(http.StatusForbidden, api.NewHTTPError(
-			errors.New("failpoint api is disabled")))
-		return
-	}
-
 	req := &FailpointRequest{}
 	if err := c.BindJSON(req); err != nil {
 		_ = c.Error(cerror.ErrAPIInvalidParam.GenWithStack("invalid request: %s", err.Error()))
@@ -110,12 +94,6 @@ func (h *OpenAPIV2) EnableFailpoint(c *gin.Context) {
 
 // DisableFailpoint disables a failpoint dynamically.
 func (h *OpenAPIV2) DisableFailpoint(c *gin.Context) {
-	if !failpointAPIEnabled() {
-		c.IndentedJSON(http.StatusForbidden, api.NewHTTPError(
-			errors.New("failpoint api is disabled")))
-		return
-	}
-
 	name := strings.TrimSpace(c.Query("name"))
 	if name == "" {
 		req := &FailpointRequest{}
@@ -140,12 +118,6 @@ func (h *OpenAPIV2) DisableFailpoint(c *gin.Context) {
 
 // ListFailpoints lists failpoints enabled via the HTTP API.
 func (h *OpenAPIV2) ListFailpoints(c *gin.Context) {
-	if !failpointAPIEnabled() {
-		c.IndentedJSON(http.StatusForbidden, api.NewHTTPError(
-			errors.New("failpoint api is disabled")))
-		return
-	}
-
 	snapshot := failpointState.snapshot()
 	names := make([]string, 0, len(snapshot))
 	for name := range snapshot {

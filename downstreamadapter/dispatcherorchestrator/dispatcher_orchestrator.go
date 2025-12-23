@@ -374,7 +374,7 @@ func createBootstrapResponse(
 			})
 		})
 		manager.GetRedoCurrentOperatorMap().Range(func(key, value any) bool {
-			req := value.(*heartbeatpb.ScheduleDispatcherRequest)
+			req := value.(heartbeatpb.ScheduleDispatcherRequest)
 			_, ok := manager.GetRedoDispatcherMap().Get(common.NewDispatcherIDFromPB(req.Config.DispatcherID))
 			if !ok {
 				log.Error("Redo dispatcher not found, this should not happen",
@@ -404,7 +404,7 @@ func createBootstrapResponse(
 		})
 	})
 	manager.GetCurrentOperatorMap().Range(func(key, value any) bool {
-		req := value.(*heartbeatpb.ScheduleDispatcherRequest)
+		req := value.(heartbeatpb.ScheduleDispatcherRequest)
 		_, ok := manager.GetDispatcherMap().Get(common.NewDispatcherIDFromPB(req.Config.DispatcherID))
 		if !ok {
 			log.Error("Dispatcher not found, this should not happen",

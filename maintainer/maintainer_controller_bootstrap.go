@@ -238,9 +238,14 @@ func (c *Controller) processTableSpans(
 			zap.Stringer("changefeed", c.changefeedID),
 			zap.Int64("tableID", table.TableID))
 
-		spanController.AddWorkingSpans(tableSpans)
+		if isTableWorking {
+			spanController.AddWorkingSpans(tableSpans)
+		}
 
 		if c.enableTableAcrossNodes {
+			if !isTableWorking && tableSpans == nil {
+				tableSpans = utils.NewBtreeMap[*heartbeatpb.TableSpan, *replica.SpanReplication](common.LessTableSpan)
+			}
 			if isTableSpanExists {
 				for _, replicaSet := range replicaSets {
 					tableSpans.ReplaceOrInsert(replicaSet.Span, replicaSet)
@@ -249,7 +254,10 @@ func (c *Controller) processTableSpans(
 			c.handleTableHoles(spanController, table, tableSpans, tableSpan, splitEnabled)
 		}
 		// Remove processed table from working task map
-		delete(workingTaskMap, table.TableID)
+		if isTableWorking {
+			delete(workingTaskMap, table.TableID)
+		}
+		return
 	} else {
 		spanController.AddNewTable(table, c.startCheckpointTs)
 	}
@@ -428,7 +436,35 @@ func (c *Controller) restoreCurrentWorkingOperators(
 ) error {
 	for node, resp := range allNodesResp {
 		for _, req := range resp.Operators {
+			if req == nil || req.Config == nil || req.Config.DispatcherID == nil {
+				log.Warn("bootstrap operator config is nil, skip restoring it",
+					zap.String("nodeID", node.String()),
+					zap.String("changefeed", resp.ChangefeedID.String()))
+				continue
+			}
 			dispatcherID := common.NewDispatcherIDFromPB(req.Config.DispatcherID)
+			span := req.Config.Span
+			schemaID := req.Config.SchemaID
+			if span == nil {
+				for _, spanInfo := range resp.Spans {
+					if common.NewDispatcherIDFromPB(spanInfo.ID) == dispatcherID {
+						span = spanInfo.Span
+						if schemaID == 0 {
+							schemaID = spanInfo.SchemaID
+						}
+						break
+					}
+				}
+			}
+			if span == nil {
+				log.Warn("bootstrap operator missing span, skip restoring it",
+					zap.String("nodeID", node.String()),
+					zap.String("changefeed", resp.ChangefeedID.String()),
+					zap.String("dispatcherID", dispatcherID.String()),
+					zap.String("operatorType", req.OperatorType.String()),
+					zap.String("scheduleAction", req.ScheduleAction.String()))
+				continue
+			}
 			spanController := c.getSpanController(req.Config.Mode)
 			replicaSet := spanController.GetTaskByID(dispatcherID)
 			if replicaSet != nil {
@@ -441,11 +477,11 @@ func (c *Controller) restoreCurrentWorkingOperators(
 			replicaSet = replica.NewSpanReplication(
 				c.changefeedID,
 				dispatcherID,
-				req.Config.SchemaID,
-				req.Config.Span,
+				schemaID,
+				span,
 				req.Config.StartTs,
 				req.Config.Mode,
-				spanController.ShouldEnableSplit(tableSplitMap[req.Config.Span.TableID]),
+				spanController.ShouldEnableSplit(tableSplitMap[span.TableID]),
 			)
 			spanController.AddAbsentReplicaSet(replicaSet)
 			switch req.ScheduleAction {
@@ -493,7 +529,9 @@ func (c *Controller) restoreCurrentWorkingOperators(
 						replicaSet,
 						req.OperatorType,
 						func() { // post finish
-							spanController.MarkAbsentWithoutLock(replicaSet)
+							if spanController.GetTaskByID(replicaSet.ID) != nil {
+								spanController.MarkSpanAbsent(replicaSet)
+							}
 						},
 					)
 					if ok := c.operatorController.AddOperator(op); !ok {

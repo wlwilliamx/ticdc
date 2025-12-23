@@ -83,7 +83,7 @@ EOF
 
 	check_failpoint_log_value "$FAILPOINT_API_TEST_VALUE"
 	disable_failpoint --name "$FAILPOINT_API_TEST_NAME"
-	
+
 	check_sync_diff $WORK_DIR $CUR/conf/diff_config.toml
 	export GO_FAILPOINTS=''
 	cleanup_process $CDC_BINARY

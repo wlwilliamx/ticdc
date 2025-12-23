@@ -60,6 +60,7 @@ func NewAddDispatcherOperator(
 		replicaSet:     replicaSet,
 		dest:           dest,
 		spanController: spanController,
+		operatorType:   operatorType,
 		sendThrottler:  newSendThrottler(),
 	}
 }

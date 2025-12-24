@@ -11,35 +11,6 @@ SINK_TYPE=$1
 CDC_ADDRS=("127.0.0.1:8300" "127.0.0.1:8301" "127.0.0.1:8302")
 FAILPOINT_NAME="github.com/pingcap/ticdc/downstreamadapter/dispatcher/NotReadyToCloseDispatcher"
 
-function enable_failpoint() {
-	local addr=$1
-	local name=$2
-	local expr=$3
-	local payload
-	payload=$(printf '{"name":"%s","expr":"%s"}' "$name" "$expr")
-	local http_code
-	http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://${addr}/debug/failpoints" \
-		-H "Content-Type: application/json" --data "$payload")
-	if [ "$http_code" != "200" ]; then
-		echo "enable failpoint failed: $name on $addr" >&2
-		exit 1
-	fi
-}
-
-function disable_failpoint() {
-	local addr=$1
-	local name=$2
-	local payload
-	payload=$(printf '{"name":"%s"}' "$name")
-	local http_code
-	http_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "http://${addr}/debug/failpoints" \
-		-H "Content-Type: application/json" --data "$payload")
-	if [ "$http_code" != "200" ]; then
-		echo "disable failpoint failed: $name on $addr" >&2
-		exit 1
-	fi
-}
-
 function get_capture_id_by_addr() {
 	local api_addr=$1
 	local target_addr=$2
@@ -170,7 +141,7 @@ function run() {
 		wait_for_table_on_addr "$api_addr" "$changefeed_id" "$table_id" "$origin_addr"
 	fi
 
-	enable_failpoint "$origin_addr" "$FAILPOINT_NAME" "return(true)"
+	enable_failpoint --addr "$origin_addr" --name "$FAILPOINT_NAME" --expr "return(true)"
 
 	move_table_with_retry "$target_addr" $table_id "$changefeed_id" 10
 	wait_for_table_on_addr "$api_addr" "$changefeed_id" "$table_id" "$origin_addr"
@@ -182,7 +153,7 @@ function run() {
 	new_maintainer_addr=$(wait_for_maintainer_move "$api_addr" "$changefeed_id" "$maintainer_addr")
 	echo "maintainer moved to $new_maintainer_addr"
 
-	disable_failpoint "$origin_addr" "$FAILPOINT_NAME"
+	disable_failpoint --addr "$origin_addr" --name "$FAILPOINT_NAME"
 
 	wait_for_table_on_addr "$api_addr" "$changefeed_id" "$table_id" "$target_addr"
 

@@ -362,64 +362,11 @@ func createBootstrapResponse(
 	}
 
 	if manager.RedoEnable {
-		manager.GetRedoDispatcherMap().ForEach(func(id common.DispatcherID, d *dispatcher.RedoDispatcher) {
-			response.Spans = append(response.Spans, &heartbeatpb.BootstrapTableSpan{
-				ID:              id.ToPB(),
-				SchemaID:        d.GetSchemaID(),
-				Span:            d.GetTableSpan(),
-				ComponentStatus: d.GetComponentStatus(),
-				CheckpointTs:    d.GetCheckpointTs(),
-				BlockState:      d.GetBlockEventStatus(),
-				Mode:            d.GetMode(),
-			})
-		})
-		manager.GetRedoCurrentOperatorMap().Range(func(key, value any) bool {
-			req := value.(heartbeatpb.ScheduleDispatcherRequest)
-			_, ok := manager.GetRedoDispatcherMap().Get(common.NewDispatcherIDFromPB(req.Config.DispatcherID))
-			if !ok {
-				log.Error("Redo dispatcher not found, this should not happen",
-					zap.String("changefeed", changefeedID.String()),
-					zap.String("dispatcherID", req.Config.DispatcherID.String()),
-				)
-			}
-
-			response.Operators = append(response.Operators, &heartbeatpb.ScheduleDispatcherRequest{
-				ChangefeedID:   req.ChangefeedID,
-				Config:         req.Config,
-				ScheduleAction: req.ScheduleAction,
-				OperatorType:   req.OperatorType,
-			})
-			return true
-		})
+		retrieveRedoDispatcherSpanForBootstrapResponse(manager, response)
+		retrieveRedoCurrentOperatorsForBootstrapResponse(changefeedID, manager, response)
 	}
-	manager.GetDispatcherMap().ForEach(func(id common.DispatcherID, d *dispatcher.EventDispatcher) {
-		response.Spans = append(response.Spans, &heartbeatpb.BootstrapTableSpan{
-			ID:              id.ToPB(),
-			SchemaID:        d.GetSchemaID(),
-			Span:            d.GetTableSpan(),
-			ComponentStatus: d.GetComponentStatus(),
-			CheckpointTs:    d.GetCheckpointTs(),
-			BlockState:      d.GetBlockEventStatus(),
-			Mode:            d.GetMode(),
-		})
-	})
-	manager.GetCurrentOperatorMap().Range(func(key, value any) bool {
-		req := value.(heartbeatpb.ScheduleDispatcherRequest)
-		_, ok := manager.GetDispatcherMap().Get(common.NewDispatcherIDFromPB(req.Config.DispatcherID))
-		if !ok {
-			log.Error("Dispatcher not found, this should not happen",
-				zap.String("changefeed", changefeedID.String()),
-				zap.String("dispatcherID", req.Config.DispatcherID.String()),
-			)
-		}
-		response.Operators = append(response.Operators, &heartbeatpb.ScheduleDispatcherRequest{
-			ChangefeedID:   req.ChangefeedID,
-			Config:         req.Config,
-			ScheduleAction: req.ScheduleAction,
-			OperatorType:   req.OperatorType,
-		})
-		return true
-	})
+	retrieveDispatcherSpanForBootstrapResponse(manager, response)
+	retrieveCurrentOperatorsForBootstrapResponse(changefeedID, manager, response)
 
 	return response
 }
@@ -481,4 +428,86 @@ func (m *DispatcherOrchestrator) handleDispatcherError(
 		},
 	}
 	return m.sendResponse(from, messaging.MaintainerManagerTopic, response)
+}
+
+func retrieveRedoDispatcherSpanForBootstrapResponse(
+	manager *dispatchermanager.DispatcherManager,
+	response *heartbeatpb.MaintainerBootstrapResponse,
+) {
+	manager.GetRedoDispatcherMap().ForEach(func(id common.DispatcherID, d *dispatcher.RedoDispatcher) {
+		response.Spans = append(response.Spans, &heartbeatpb.BootstrapTableSpan{
+			ID:              id.ToPB(),
+			SchemaID:        d.GetSchemaID(),
+			Span:            d.GetTableSpan(),
+			ComponentStatus: d.GetComponentStatus(),
+			CheckpointTs:    d.GetCheckpointTs(),
+			BlockState:      d.GetBlockEventStatus(),
+			Mode:            d.GetMode(),
+		})
+	})
+}
+
+func retrieveDispatcherSpanForBootstrapResponse(
+	manager *dispatchermanager.DispatcherManager,
+	response *heartbeatpb.MaintainerBootstrapResponse,
+) {
+	manager.GetDispatcherMap().ForEach(func(id common.DispatcherID, d *dispatcher.EventDispatcher) {
+		response.Spans = append(response.Spans, &heartbeatpb.BootstrapTableSpan{
+			ID:              id.ToPB(),
+			SchemaID:        d.GetSchemaID(),
+			Span:            d.GetTableSpan(),
+			ComponentStatus: d.GetComponentStatus(),
+			CheckpointTs:    d.GetCheckpointTs(),
+			BlockState:      d.GetBlockEventStatus(),
+			Mode:            d.GetMode(),
+		})
+	})
+}
+
+func retrieveCurrentOperatorsForBootstrapResponse(
+	changefeedID *heartbeatpb.ChangefeedID,
+	manager *dispatchermanager.DispatcherManager,
+	response *heartbeatpb.MaintainerBootstrapResponse,
+) {
+	manager.GetCurrentOperatorMap().Range(func(key, value any) bool {
+		req := value.(heartbeatpb.ScheduleDispatcherRequest)
+		_, ok := manager.GetDispatcherMap().Get(common.NewDispatcherIDFromPB(req.Config.DispatcherID))
+		if !ok {
+			log.Error("Dispatcher not found, this should not happen",
+				zap.String("changefeed", changefeedID.String()),
+				zap.String("dispatcherID", req.Config.DispatcherID.String()),
+			)
+		}
+		response.Operators = append(response.Operators, &heartbeatpb.ScheduleDispatcherRequest{
+			ChangefeedID:   req.ChangefeedID,
+			Config:         req.Config,
+			ScheduleAction: req.ScheduleAction,
+			OperatorType:   req.OperatorType,
+		})
+		return true
+	})
+}
+
+func retrieveRedoCurrentOperatorsForBootstrapResponse(
+	changefeedID *heartbeatpb.ChangefeedID,
+	manager *dispatchermanager.DispatcherManager,
+	response *heartbeatpb.MaintainerBootstrapResponse,
+) {
+	manager.GetRedoCurrentOperatorMap().Range(func(key, value any) bool {
+		req := value.(heartbeatpb.ScheduleDispatcherRequest)
+		_, ok := manager.GetRedoDispatcherMap().Get(common.NewDispatcherIDFromPB(req.Config.DispatcherID))
+		if !ok {
+			log.Error("Redo dispatcher not found, this should not happen",
+				zap.String("changefeed", changefeedID.String()),
+				zap.String("dispatcherID", req.Config.DispatcherID.String()),
+			)
+		}
+		response.Operators = append(response.Operators, &heartbeatpb.ScheduleDispatcherRequest{
+			ChangefeedID:   req.ChangefeedID,
+			Config:         req.Config,
+			ScheduleAction: req.ScheduleAction,
+			OperatorType:   req.OperatorType,
+		})
+		return true
+	})
 }

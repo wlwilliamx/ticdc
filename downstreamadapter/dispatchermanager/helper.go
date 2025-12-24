@@ -200,6 +200,9 @@ func (h *SchedulerDispatcherRequestHandler) Path(scheduleDispatcherRequest Sched
 	return common.NewChangefeedGIDFromPB(scheduleDispatcherRequest.ChangefeedID)
 }
 
+// Handle handles the SchedulerDispatcherRequest events, which are operators from the maintainer to add or remove dispatchers.
+// It will record the operators first, it's used to store the information that there is a not finished operator for a dispatcher.
+// The current working operators will be deleted after the operator is finished, i.e. the dispatcher is created or removed.
 func (h *SchedulerDispatcherRequestHandler) Handle(dispatcherManager *DispatcherManager, reqs ...SchedulerDispatcherRequest) bool {
 	// If req is about remove dispatcher, then there will only be one request in reqs.
 	infos := map[common.DispatcherID]dispatcherCreateInfo{}

@@ -211,15 +211,19 @@ func (h *SchedulerDispatcherRequestHandler) Handle(dispatcherManager *Dispatcher
 		}
 		switch req.ScheduleAction {
 		case heartbeatpb.ScheduleAction_Create:
+			// store the add operator and create a info for later create dispatcher
 			handleScheduleCreate(dispatcherManager, &req, operatorKey, infos, redoInfos)
 		case heartbeatpb.ScheduleAction_Remove:
 			if len(reqs) != 1 {
 				log.Error("invalid remove dispatcher request count in one batch", zap.Int("count", len(reqs)))
 			}
+			// store the remove operator and remove the dispatcher directly
+			// the remove operator will be deleted after the dispatcher is removed from dispatcherMap
 			handleScheduleRemove(dispatcherManager, &req, operatorKey)
 		}
 	}
 
+	// use the infos to create dispatchers, and delete the current operators after created, just indicate the operator is finished
 	createDispatcherByInfo(dispatcherManager, infos, redoInfos)
 	return false
 }

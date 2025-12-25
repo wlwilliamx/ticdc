@@ -936,18 +936,12 @@ func (e *DispatcherManager) close(removeChangefeed bool) {
 
 // cleanEventDispatcher is called when the event dispatcher is removed successfully.
 func (e *DispatcherManager) cleanEventDispatcher(id common.DispatcherID, schemaID int64) {
-	var spanStr string
-	if d, ok := e.dispatcherMap.m.Load(id); ok {
-		spanStr = d.(*dispatcher.EventDispatcher).GetTableSpan().String()
-	}
 	e.dispatcherMap.Delete(id)
 	e.schemaIDToDispatchers.Delete(schemaID, id)
-	e.currentOperatorMap.Delete(spanStr)
-	e.currentOperatorMap.Delete(id.String())
+	e.currentOperatorMap.Delete(id)
 	log.Debug("delete current working remove operator",
 		zap.String("changefeedID", e.changefeedID.String()),
 		zap.String("dispatcherID", id.String()),
-		zap.String("span", spanStr),
 	)
 	tableTriggerEventDispatcher := e.GetTableTriggerEventDispatcher()
 	if tableTriggerEventDispatcher != nil && tableTriggerEventDispatcher.GetId() == id {

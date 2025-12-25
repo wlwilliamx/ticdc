@@ -328,17 +328,16 @@ func createDispatcherByInfo(
 			dispatcherManager.handleError(context.Background(), err)
 		}
 		for _, info := range redoInfos {
-			if v, ok := dispatcherManager.redoCurrentOperatorMap.Load(info.TableSpan.String()); ok {
+			if v, ok := dispatcherManager.redoCurrentOperatorMap.Load(info.Id); ok {
 				req := v.(SchedulerDispatcherRequest)
 				log.Debug("delete current working add operator for redo dispatcher",
 					zap.String("changefeedID", dispatcherManager.changefeedID.String()),
 					zap.String("dispatcherID", info.Id.String()),
-					zap.String("span", info.TableSpan.String()),
 					zap.Any("operator", req),
 				)
-				dispatcherManager.redoCurrentOperatorMap.Delete(info.TableSpan.String())
+				dispatcherManager.redoCurrentOperatorMap.Delete(info.Id)
 			} else {
-				log.Error("current working operator not found for redo dispatcher, should not happen", zap.String("span", info.TableSpan.String()))
+				log.Error("current working operator not found for redo dispatcher, should not happen", zap.String("id", info.Id.String()))
 			}
 		}
 	}
@@ -348,17 +347,16 @@ func createDispatcherByInfo(
 			dispatcherManager.handleError(context.Background(), err)
 		}
 		for _, info := range infos {
-			if v, ok := dispatcherManager.currentOperatorMap.Load(info.TableSpan.String()); ok {
+			if v, ok := dispatcherManager.currentOperatorMap.Load(info.Id); ok {
 				req := v.(SchedulerDispatcherRequest)
 				log.Debug("delete current working add operator",
 					zap.String("changefeedID", dispatcherManager.changefeedID.String()),
 					zap.String("dispatcherID", info.Id.String()),
-					zap.String("span", info.TableSpan.String()),
 					zap.Any("operator", req),
 				)
-				dispatcherManager.currentOperatorMap.Delete(info.TableSpan.String())
+				dispatcherManager.currentOperatorMap.Delete(info.Id)
 			} else {
-				log.Error("current working operator not found, should not happen", zap.String("span", info.TableSpan.String()))
+				log.Error("current working operator not found, should not happen", zap.String("id", info.Id.String()))
 			}
 		}
 	}

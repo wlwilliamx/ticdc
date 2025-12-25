@@ -88,8 +88,8 @@ type DispatcherManager struct {
 	// redoDispatcherMap restore all the redo dispatchers in the DispatcherManager, including redo table trigger event dispatcher
 	redoDispatcherMap *DispatcherMap[*dispatcher.RedoDispatcher]
 	// currentOperatorMap stores the current operators for each dispatcher
-	currentOperatorMap     sync.Map // map[span.String()]*dispatcher.CurrentOperator
-	redoCurrentOperatorMap sync.Map // map[span.string()]*dispatcher.CurrentOperator
+	currentOperatorMap     sync.Map // map[common.DispatcherID]*dispatcher.CurrentOperator
+	redoCurrentOperatorMap sync.Map // map[common.DispatcherID]*dispatcher.CurrentOperator
 	// schemaIDToDispatchers is shared in the DispatcherManager,
 	// it store all the infos about schemaID->Dispatchers
 	// Dispatchers may change the schemaID when meets some special events, such as rename ddl

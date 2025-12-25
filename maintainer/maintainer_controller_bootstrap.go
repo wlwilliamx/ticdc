@@ -436,6 +436,7 @@ func (c *Controller) restoreCurrentWorkingOperators(
 ) error {
 	for node, resp := range allNodesResp {
 		for _, req := range resp.Operators {
+			// Validate
 			if req == nil || req.Config == nil || req.Config.DispatcherID == nil {
 				log.Warn("bootstrap operator config is nil, skip restoring it",
 					zap.String("nodeID", node.String()),
@@ -474,6 +475,8 @@ func (c *Controller) restoreCurrentWorkingOperators(
 					zap.Any("replicaSet", replicaSet))
 				return errors.New("duplicate replica set found")
 			}
+
+			// Create a new replica set for the span, and add it to the span controller
 			replicaSet = replica.NewSpanReplication(
 				c.changefeedID,
 				dispatcherID,
@@ -484,71 +487,112 @@ func (c *Controller) restoreCurrentWorkingOperators(
 				spanController.ShouldEnableSplit(tableSplitMap[span.TableID]),
 			)
 			spanController.AddAbsentReplicaSet(replicaSet)
+
+			// Handle the operator based on the schedule action and its original operator type
 			switch req.ScheduleAction {
 			case heartbeatpb.ScheduleAction_Create:
-				switch req.OperatorType {
-				case heartbeatpb.OperatorType_O_Add, heartbeatpb.OperatorType_O_Move, heartbeatpb.OperatorType_O_Split:
-					op := operator.NewAddDispatcherOperator(spanController, replicaSet, node, heartbeatpb.OperatorType_O_Add)
-					if ok := c.operatorController.AddOperator(op); !ok {
-						log.Error("add operator failed when dealing current working operators in bootstrap, should not happen",
-							zap.String("nodeID", node.String()),
-							zap.String("changefeed", resp.ChangefeedID.String()),
-							zap.String("dispatcher", op.ID().String()),
-							zap.String("originOperatorType", req.OperatorType.String()),
-							zap.Any("operator", op),
-							zap.Any("replicaSet", replicaSet),
-						)
-						return errors.ErrOperatorIsNil.GenWithStack("add operator failed when bootstrap")
-					}
-					op.Start()
+				err, done := c.handleCurrentWorkingAdd(req, spanController, replicaSet, node, resp)
+				if done {
+					return err
 				}
 			case heartbeatpb.ScheduleAction_Remove:
-				switch req.OperatorType {
-				case heartbeatpb.OperatorType_O_Remove:
-					op := operator.NewRemoveDispatcherOperator(
-						spanController,
-						replicaSet,
-						heartbeatpb.OperatorType_O_Remove,
-						nil,
-					)
-					if ok := c.operatorController.AddOperator(op); !ok {
-						log.Error("add operator failed when dealing current working operators in bootstrap, should not happen",
-							zap.String("nodeID", node.String()),
-							zap.String("changefeed", resp.ChangefeedID.String()),
-							zap.String("dispatcher", op.ID().String()),
-							zap.String("originOperatorType", req.OperatorType.String()),
-							zap.Any("operator", op),
-							zap.Any("replicaSet", replicaSet),
-						)
-						return errors.ErrOperatorIsNil.GenWithStack("add operator failed when bootstrap")
-					}
-					op.Start()
-				case heartbeatpb.OperatorType_O_Move, heartbeatpb.OperatorType_O_Split:
-					op := operator.NewRemoveDispatcherOperator(
-						spanController,
-						replicaSet,
-						req.OperatorType,
-						func() { // post finish
-							if spanController.GetTaskByID(replicaSet.ID) != nil {
-								spanController.MarkSpanAbsent(replicaSet)
-							}
-						},
-					)
-					if ok := c.operatorController.AddOperator(op); !ok {
-						log.Error("add operator failed when dealing current working operators in bootstrap, should not happen",
-							zap.String("nodeID", node.String()),
-							zap.String("changefeed", resp.ChangefeedID.String()),
-							zap.String("dispatcher", op.ID().String()),
-							zap.String("originOperatorType", req.OperatorType.String()),
-							zap.Any("operator", op),
-							zap.Any("replicaSet", replicaSet),
-						)
-						return errors.ErrOperatorIsNil.GenWithStack("add operator failed when bootstrap")
-					}
-					op.Start()
+				err, done := c.handleCurrentWorkingRemove(req, spanController, replicaSet, node, resp)
+				if done {
+					return err
 				}
 			}
 		}
 	}
 	return nil
+}
+
+func (c *Controller) handleCurrentWorkingAdd(
+	req *heartbeatpb.ScheduleDispatcherRequest,
+	spanController *span.Controller,
+	replicaSet *replica.SpanReplication,
+	node node.ID,
+	resp *heartbeatpb.MaintainerBootstrapResponse,
+) (error, bool) {
+	// Check the original operator of this add operator
+	switch req.OperatorType {
+	// 1. If the original operator is add, just finish it directly by adding a new add operator.
+	// 2. If the original operator is move, which is a remove + add,
+	// just finish the add part so that the move operator is done.
+	// 3. If the original operator is split, which is a remove + add + add...,
+	// same as move, just finish the add part.
+	case heartbeatpb.OperatorType_O_Add, heartbeatpb.OperatorType_O_Move, heartbeatpb.OperatorType_O_Split:
+		op := operator.NewAddDispatcherOperator(spanController, replicaSet, node, heartbeatpb.OperatorType_O_Add)
+		if ok := c.operatorController.AddOperator(op); !ok {
+			log.Error("add operator failed when dealing current working operators in bootstrap, should not happen",
+				zap.String("nodeID", node.String()),
+				zap.String("changefeed", resp.ChangefeedID.String()),
+				zap.String("dispatcher", op.ID().String()),
+				zap.String("originOperatorType", req.OperatorType.String()),
+				zap.Any("operator", op),
+				zap.Any("replicaSet", replicaSet),
+			)
+			return errors.ErrOperatorIsNil.GenWithStack("add operator failed when bootstrap"), true
+		}
+		op.Start()
+	}
+	return nil, false
+}
+
+func (c *Controller) handleCurrentWorkingRemove(
+	req *heartbeatpb.ScheduleDispatcherRequest,
+	spanController *span.Controller,
+	replicaSet *replica.SpanReplication,
+	node node.ID,
+	resp *heartbeatpb.MaintainerBootstrapResponse,
+) (error, bool) {
+	// Check the original operator of this remove operator
+	switch req.OperatorType {
+	// 1. If the original operator is remove, just finish it directly by adding a new remove operator.
+	case heartbeatpb.OperatorType_O_Remove:
+		op := operator.NewRemoveDispatcherOperator(
+			spanController,
+			replicaSet,
+			heartbeatpb.OperatorType_O_Remove,
+			nil,
+		)
+		if ok := c.operatorController.AddOperator(op); !ok {
+			log.Error("add operator failed when dealing current working operators in bootstrap, should not happen",
+				zap.String("nodeID", node.String()),
+				zap.String("changefeed", resp.ChangefeedID.String()),
+				zap.String("dispatcher", op.ID().String()),
+				zap.String("originOperatorType", req.OperatorType.String()),
+				zap.Any("operator", op),
+				zap.Any("replicaSet", replicaSet),
+			)
+			return errors.ErrOperatorIsNil.GenWithStack("add operator failed when bootstrap"), true
+		}
+		op.Start()
+	// 2. If the original operator is move or split, which contains a remove part,
+	// we just need to finish the first remove part, this is enough to keep the operator consistent.
+	// The following add part will be triggered by our basic scheduling logic.
+	case heartbeatpb.OperatorType_O_Move, heartbeatpb.OperatorType_O_Split:
+		op := operator.NewRemoveDispatcherOperator(
+			spanController,
+			replicaSet,
+			req.OperatorType,
+			func() { // post finish
+				if spanController.GetTaskByID(replicaSet.ID) != nil {
+					spanController.MarkSpanAbsent(replicaSet)
+				}
+			},
+		)
+		if ok := c.operatorController.AddOperator(op); !ok {
+			log.Error("add operator failed when dealing current working operators in bootstrap, should not happen",
+				zap.String("nodeID", node.String()),
+				zap.String("changefeed", resp.ChangefeedID.String()),
+				zap.String("dispatcher", op.ID().String()),
+				zap.String("originOperatorType", req.OperatorType.String()),
+				zap.Any("operator", op),
+				zap.Any("replicaSet", replicaSet),
+			)
+			return errors.ErrOperatorIsNil.GenWithStack("add operator failed when bootstrap"), true
+		}
+		op.Start()
+	}
+	return nil, false
 }

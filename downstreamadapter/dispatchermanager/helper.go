@@ -173,19 +173,6 @@ func newSchedulerDispatcherRequestDynamicStream() dynstream.DynamicStream[int, c
 	return ds
 }
 
-func schedulerDispatcherKey(req *heartbeatpb.ScheduleDispatcherRequest) string {
-	if req == nil || req.Config == nil {
-		return ""
-	}
-	if req.Config.Span != nil {
-		return req.Config.Span.String()
-	}
-	if req.Config.DispatcherID != nil {
-		return common.NewDispatcherIDFromPB(req.Config.DispatcherID).String()
-	}
-	return ""
-}
-
 type SchedulerDispatcherRequest struct {
 	*heartbeatpb.ScheduleDispatcherRequest
 }
@@ -208,21 +195,21 @@ func (h *SchedulerDispatcherRequestHandler) Handle(dispatcherManager *Dispatcher
 	infos := map[common.DispatcherID]dispatcherCreateInfo{}
 	redoInfos := map[common.DispatcherID]dispatcherCreateInfo{}
 	for _, req := range reqs {
-		operatorKey, ok := preCheckForSchedulerHandler(&req, dispatcherManager)
+		operatorKey, ok := preCheckForSchedulerHandler(req, dispatcherManager)
 		if !ok {
 			continue
 		}
 		switch req.ScheduleAction {
 		case heartbeatpb.ScheduleAction_Create:
 			// store the add operator and create a info for later create dispatcher
-			handleScheduleCreate(dispatcherManager, &req, operatorKey, infos, redoInfos)
+			handleScheduleCreate(dispatcherManager, req, operatorKey, infos, redoInfos)
 		case heartbeatpb.ScheduleAction_Remove:
 			if len(reqs) != 1 {
 				log.Error("invalid remove dispatcher request count in one batch", zap.Int("count", len(reqs)))
 			}
 			// store the remove operator and remove the dispatcher directly
 			// the remove operator will be deleted after the dispatcher is removed from dispatcherMap
-			handleScheduleRemove(dispatcherManager, &req, operatorKey)
+			handleScheduleRemove(dispatcherManager, req, operatorKey)
 		}
 	}
 
@@ -231,7 +218,7 @@ func (h *SchedulerDispatcherRequestHandler) Handle(dispatcherManager *Dispatcher
 	return false
 }
 
-func preCheckForSchedulerHandler(req *SchedulerDispatcherRequest, dispatcherManager *DispatcherManager) (common.DispatcherID, bool) {
+func preCheckForSchedulerHandler(req SchedulerDispatcherRequest, dispatcherManager *DispatcherManager) (common.DispatcherID, bool) {
 	if req.ScheduleDispatcherRequest == nil {
 		log.Warn("scheduleDispatcherRequest is nil, skip")
 		return common.DispatcherID{}, false
@@ -259,7 +246,7 @@ func preCheckForSchedulerHandler(req *SchedulerDispatcherRequest, dispatcherMana
 
 func handleScheduleCreate(
 	dispatcherManager *DispatcherManager,
-	req *SchedulerDispatcherRequest,
+	req SchedulerDispatcherRequest,
 	operatorKey common.DispatcherID,
 	infos map[common.DispatcherID]dispatcherCreateInfo,
 	redoInfos map[common.DispatcherID]dispatcherCreateInfo,
@@ -293,7 +280,7 @@ func handleScheduleCreate(
 
 func handleScheduleRemove(
 	dispatcherManager *DispatcherManager,
-	req *SchedulerDispatcherRequest,
+	req SchedulerDispatcherRequest,
 	operatorKey common.DispatcherID,
 ) {
 	config := req.Config

@@ -171,7 +171,7 @@ func (m *DispatcherOrchestrator) handleBootstrapRequest(
 				from,
 				req.IsNewChangefeed,
 			)
-			// Fast return the error to maintainer.
+		// Fast return the error to maintainer.
 		if err != nil {
 			log.Error("failed to create new dispatcher manager",
 				zap.Any("changefeedID", cfId.Name()), zap.Duration("duration", time.Since(start)), zap.Error(err))
@@ -470,7 +470,7 @@ func retrieveCurrentOperatorsForBootstrapResponse(
 	response *heartbeatpb.MaintainerBootstrapResponse,
 ) {
 	manager.GetCurrentOperatorMap().Range(func(key, value any) bool {
-		req := value.(heartbeatpb.ScheduleDispatcherRequest)
+		req := value.(dispatchermanager.SchedulerDispatcherRequest)
 		_, ok := manager.GetDispatcherMap().Get(common.NewDispatcherIDFromPB(req.Config.DispatcherID))
 		if !ok {
 			log.Error("Dispatcher not found, this should not happen",
@@ -494,7 +494,7 @@ func retrieveRedoCurrentOperatorsForBootstrapResponse(
 	response *heartbeatpb.MaintainerBootstrapResponse,
 ) {
 	manager.GetRedoCurrentOperatorMap().Range(func(key, value any) bool {
-		req := value.(heartbeatpb.ScheduleDispatcherRequest)
+		req := value.(dispatchermanager.SchedulerDispatcherRequest)
 		_, ok := manager.GetRedoDispatcherMap().Get(common.NewDispatcherIDFromPB(req.Config.DispatcherID))
 		if !ok {
 			log.Error("Redo dispatcher not found, this should not happen",

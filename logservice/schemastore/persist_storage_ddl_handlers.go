@@ -1788,7 +1788,8 @@ func buildDDLEventForNewTableDDL(rawEvent *PersistedDDLEvent, tableFilter filter
 				zap.String("query", rawEvent.Query),
 				zap.Error(err))
 			return ddlEvent, false, err
-		} else if createStmt, ok := stmt.(*ast.CreateTableStmt); ok && createStmt.ReferTable != nil {
+		}
+		if createStmt, ok := stmt.(*ast.CreateTableStmt); ok && createStmt.ReferTable != nil {
 			refTable := createStmt.ReferTable.Name.O
 			refSchema := createStmt.ReferTable.Schema.O
 			if refSchema == "" {

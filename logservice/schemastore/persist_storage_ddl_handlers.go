@@ -1784,9 +1784,10 @@ func buildDDLEventForNewTableDDL(rawEvent *PersistedDDLEvent, tableFilter filter
 	if rawEvent.Query != "" {
 		stmt, err := parser.New().ParseOneStmt(rawEvent.Query, "", "")
 		if err != nil {
-			log.Warn("parse create table ddl failed",
+			log.Error("parse create table ddl failed",
 				zap.String("query", rawEvent.Query),
 				zap.Error(err))
+			return ddlEvent, false, err
 		} else if createStmt, ok := stmt.(*ast.CreateTableStmt); ok && createStmt.ReferTable != nil {
 			refTable := createStmt.ReferTable.Name.O
 			refSchema := createStmt.ReferTable.Schema.O

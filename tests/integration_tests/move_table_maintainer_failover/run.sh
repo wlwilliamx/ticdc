@@ -89,11 +89,10 @@ function run() {
 	start_tidb_cluster --workdir $WORK_DIR
 
 	pd_addr="http://$UP_PD_HOST_1:$UP_PD_PORT_1"
-	start_ts=$(run_cdc_cli_tso_query ${UP_PD_HOST_1} ${UP_PD_PORT_1})
 
-	run_cdc_server --workdir $WORK_DIR --binary $CDC_BINARY --pd $pd_addr --logsuffix 1 --addr "127.0.0.1:8300"
-	run_cdc_server --workdir $WORK_DIR --binary $CDC_BINARY --pd $pd_addr --logsuffix 2 --addr "127.0.0.1:8301"
-	run_cdc_server --workdir $WORK_DIR --binary $CDC_BINARY --pd $pd_addr --logsuffix 3 --addr "127.0.0.1:8302"
+	run_cdc_server --workdir $WORK_DIR --binary $CDC_BINARY --logsuffix 1 --addr "127.0.0.1:8300"
+	run_cdc_server --workdir $WORK_DIR --binary $CDC_BINARY --logsuffix 2 --addr "127.0.0.1:8301"
+	run_cdc_server --workdir $WORK_DIR --binary $CDC_BINARY --logsuffix 3 --addr "127.0.0.1:8302"
 
 	TOPIC_NAME="ticdc-move-table-maintainer-failover-$RANDOM"
 	case $SINK_TYPE in
@@ -105,7 +104,7 @@ function run() {
 		;;
 	*) SINK_URI="mysql://normal:123456@127.0.0.1:3306/?max-txn-row=1" ;;
 	esac
-	changefeed_id=$(cdc_cli_changefeed create --pd=$pd_addr --start-ts=$start_ts --sink-uri="$SINK_URI" | grep '^ID:' | head -n1 | awk '{print $2}')
+	changefeed_id=$(cdc_cli_changefeed create --sink-uri="$SINK_URI" | grep '^ID:' | head -n1 | awk '{print $2}')
 	case $SINK_TYPE in
 	kafka) run_kafka_consumer $WORK_DIR $SINK_URI ;;
 	storage) run_storage_consumer $WORK_DIR $SINK_URI "" "" ;;

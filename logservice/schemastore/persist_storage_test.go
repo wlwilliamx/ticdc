@@ -3169,3 +3169,104 @@ func TestBuildDDLEventForNewTableDDL_CreateTableLikeBlockedTableNames(t *testing
 		require.Equal(t, tc.expected, ddlEvent.BlockedTableNames)
 	}
 }
+
+func TestBuildPersistedDDLEventForCreateTableLikeSetsReferTableID(t *testing.T) {
+	cases := []struct {
+		name            string
+		query           string
+		partitionIDs    []int64
+		expectedReferID int64
+	}{
+		{
+			name:            "non partition refer table",
+			query:           "CREATE TABLE `b` LIKE `a`",
+			partitionIDs:    nil,
+			expectedReferID: 101,
+		},
+		{
+			name:            "partition refer table",
+			query:           "CREATE TABLE `b` LIKE `a`",
+			partitionIDs:    []int64{111, 112},
+			expectedReferID: 101,
+		},
+	}
+
+	for _, tc := range cases {
+		job := buildCreateTableJobForTest(100, 200, "b", 1010)
+		job.Query = tc.query
+		partitionMap := map[int64]BasicPartitionInfo{}
+		if len(tc.partitionIDs) > 0 {
+			partitionInfo := make(BasicPartitionInfo)
+			for _, id := range tc.partitionIDs {
+				partitionInfo[id] = nil
+			}
+			partitionMap[tc.expectedReferID] = partitionInfo
+		}
+		ddl := buildPersistedDDLEventForCreateTable(buildPersistedDDLEventFuncArgs{
+			job: job,
+			databaseMap: map[int64]*BasicDatabaseInfo{
+				100: {Name: "test", Tables: map[int64]bool{101: true, 200: true}},
+			},
+			tableMap: map[int64]*BasicTableInfo{
+				101: {SchemaID: 100, Name: "a"},
+				200: {SchemaID: 100, Name: "b"},
+			},
+			partitionMap: partitionMap,
+		})
+		require.Equal(t, tc.expectedReferID, ddl.ExtraTableID, tc.name)
+		if len(tc.partitionIDs) > 0 {
+			require.ElementsMatch(t, tc.partitionIDs, ddl.ReferTablePartitionIDs, tc.name)
+		} else {
+			require.Empty(t, ddl.ReferTablePartitionIDs, tc.name)
+		}
+	}
+}
+
+func TestBuildDDLEventForNewTableDDL_CreateTableLikeBlockedTables(t *testing.T) {
+	rawEvent := &PersistedDDLEvent{
+		Type:         byte(model.ActionCreateTable),
+		SchemaID:     1,
+		TableID:      2,
+		SchemaName:   "test",
+		TableName:    "b",
+		Query:        "CREATE TABLE `b` LIKE `a`",
+		TableInfo:    &model.TableInfo{},
+		ExtraTableID: 101,
+	}
+	ddlEvent, ok, err := buildDDLEventForNewTableDDL(rawEvent, nil, 0)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.ElementsMatch(t, []int64{common.DDLSpanTableID, 101}, ddlEvent.BlockedTables.TableIDs)
+
+	rawEvent.ReferTablePartitionIDs = []int64{111, 112}
+	ddlEvent, ok, err = buildDDLEventForNewTableDDL(rawEvent, nil, 0)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.ElementsMatch(t, []int64{common.DDLSpanTableID, 111, 112}, ddlEvent.BlockedTables.TableIDs)
+}
+
+func TestUpdateDDLHistoryForAddDropTable_CreateTableLikeAddsReferTable(t *testing.T) {
+	args := updateDDLHistoryFuncArgs{
+		ddlEvent: &PersistedDDLEvent{
+			Type:         byte(model.ActionCreateTable),
+			TableID:      200,
+			ExtraTableID: 101,
+			FinishedTs:   10,
+			TableInfo:    &model.TableInfo{},
+		},
+		tablesDDLHistory:       map[int64][]uint64{},
+		tableTriggerDDLHistory: []uint64{},
+	}
+	updateDDLHistoryForAddDropTable(args)
+	require.Equal(t, []uint64{10}, args.tablesDDLHistory[200])
+	require.Equal(t, []uint64{10}, args.tablesDDLHistory[101])
+
+	args.ddlEvent.ReferTablePartitionIDs = []int64{111, 112}
+	args.tablesDDLHistory = map[int64][]uint64{}
+	args.tableTriggerDDLHistory = []uint64{}
+	updateDDLHistoryForAddDropTable(args)
+	require.Equal(t, []uint64{10}, args.tablesDDLHistory[200])
+	require.Equal(t, []uint64{10}, args.tablesDDLHistory[111])
+	require.Equal(t, []uint64{10}, args.tablesDDLHistory[112])
+	require.Empty(t, args.tablesDDLHistory[101])
+}

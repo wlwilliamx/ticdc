@@ -198,6 +198,25 @@ func (z *PersistedDDLEvent) DecodeMsg(dc *msgp.Reader) (err error) {
 					return
 				}
 			}
+		case "refer_table_partitions":
+			var zb0008 uint32
+			zb0008, err = dc.ReadArrayHeader()
+			if err != nil {
+				err = msgp.WrapError(err, "ReferTablePartitionIDs")
+				return
+			}
+			if cap(z.ReferTablePartitionIDs) >= int(zb0008) {
+				z.ReferTablePartitionIDs = (z.ReferTablePartitionIDs)[:zb0008]
+			} else {
+				z.ReferTablePartitionIDs = make([]int64, zb0008)
+			}
+			for za0007 := range z.ReferTablePartitionIDs {
+				z.ReferTablePartitionIDs[za0007], err = dc.ReadInt64()
+				if err != nil {
+					err = msgp.WrapError(err, "ReferTablePartitionIDs", za0007)
+					return
+				}
+			}
 		case "query":
 			z.Query, err = dc.ReadString()
 			if err != nil {
@@ -278,9 +297,9 @@ func (z *PersistedDDLEvent) DecodeMsg(dc *msgp.Reader) (err error) {
 
 // EncodeMsg implements msgp.Encodable
 func (z *PersistedDDLEvent) EncodeMsg(en *msgp.Writer) (err error) {
-	// map header, size 25
+	// map header, size 26
 	// write "id"
-	err = en.Append(0xde, 0x0, 0x19, 0xa2, 0x69, 0x64)
+	err = en.Append(0xde, 0x0, 0x1a, 0xa2, 0x69, 0x64)
 	if err != nil {
 		return
 	}
@@ -481,6 +500,23 @@ func (z *PersistedDDLEvent) EncodeMsg(en *msgp.Writer) (err error) {
 			return
 		}
 	}
+	// write "refer_table_partitions"
+	err = en.Append(0xb6, 0x72, 0x65, 0x66, 0x65, 0x72, 0x5f, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x5f, 0x70, 0x61, 0x72, 0x74, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x73)
+	if err != nil {
+		return
+	}
+	err = en.WriteArrayHeader(uint32(len(z.ReferTablePartitionIDs)))
+	if err != nil {
+		err = msgp.WrapError(err, "ReferTablePartitionIDs")
+		return
+	}
+	for za0007 := range z.ReferTablePartitionIDs {
+		err = en.WriteInt64(z.ReferTablePartitionIDs[za0007])
+		if err != nil {
+			err = msgp.WrapError(err, "ReferTablePartitionIDs", za0007)
+			return
+		}
+	}
 	// write "query"
 	err = en.Append(0xa5, 0x71, 0x75, 0x65, 0x72, 0x79)
 	if err != nil {
@@ -584,9 +620,9 @@ func (z *PersistedDDLEvent) EncodeMsg(en *msgp.Writer) (err error) {
 // MarshalMsg implements msgp.Marshaler
 func (z *PersistedDDLEvent) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
-	// map header, size 25
+	// map header, size 26
 	// string "id"
-	o = append(o, 0xde, 0x0, 0x19, 0xa2, 0x69, 0x64)
+	o = append(o, 0xde, 0x0, 0x1a, 0xa2, 0x69, 0x64)
 	o = msgp.AppendInt64(o, z.ID)
 	// string "type"
 	o = append(o, 0xa4, 0x74, 0x79, 0x70, 0x65)
@@ -650,6 +686,12 @@ func (z *PersistedDDLEvent) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.AppendArrayHeader(o, uint32(len(z.PrevPartitions)))
 	for za0006 := range z.PrevPartitions {
 		o = msgp.AppendInt64(o, z.PrevPartitions[za0006])
+	}
+	// string "refer_table_partitions"
+	o = append(o, 0xb6, 0x72, 0x65, 0x66, 0x65, 0x72, 0x5f, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x5f, 0x70, 0x61, 0x72, 0x74, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x73)
+	o = msgp.AppendArrayHeader(o, uint32(len(z.ReferTablePartitionIDs)))
+	for za0007 := range z.ReferTablePartitionIDs {
+		o = msgp.AppendInt64(o, z.ReferTablePartitionIDs[za0007])
 	}
 	// string "query"
 	o = append(o, 0xa5, 0x71, 0x75, 0x65, 0x72, 0x79)
@@ -876,6 +918,25 @@ func (z *PersistedDDLEvent) UnmarshalMsg(bts []byte) (o []byte, err error) {
 					return
 				}
 			}
+		case "refer_table_partitions":
+			var zb0008 uint32
+			zb0008, bts, err = msgp.ReadArrayHeaderBytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "ReferTablePartitionIDs")
+				return
+			}
+			if cap(z.ReferTablePartitionIDs) >= int(zb0008) {
+				z.ReferTablePartitionIDs = (z.ReferTablePartitionIDs)[:zb0008]
+			} else {
+				z.ReferTablePartitionIDs = make([]int64, zb0008)
+			}
+			for za0007 := range z.ReferTablePartitionIDs {
+				z.ReferTablePartitionIDs[za0007], bts, err = msgp.ReadInt64Bytes(bts)
+				if err != nil {
+					err = msgp.WrapError(err, "ReferTablePartitionIDs", za0007)
+					return
+				}
+			}
 		case "query":
 			z.Query, bts, err = msgp.ReadStringBytes(bts)
 			if err != nil {
@@ -969,7 +1030,7 @@ func (z *PersistedDDLEvent) Msgsize() (s int) {
 	for za0005 := range z.ExtraTableNames {
 		s += msgp.StringPrefixSize + len(z.ExtraTableNames[za0005])
 	}
-	s += 16 + msgp.ArrayHeaderSize + (len(z.PrevPartitions) * (msgp.Int64Size)) + 6 + msgp.StringPrefixSize + len(z.Query) + 15 + msgp.Int64Size + 12 + msgp.Uint64Size + 9 + msgp.Uint64Size + 17 + msgp.BytesPrefixSize + len(z.TableInfoValue) + 23 + msgp.BytesPrefixSize + len(z.ExtraTableInfoValue) + 23 + msgp.ArrayHeaderSize
+	s += 16 + msgp.ArrayHeaderSize + (len(z.PrevPartitions) * (msgp.Int64Size)) + 23 + msgp.ArrayHeaderSize + (len(z.ReferTablePartitionIDs) * (msgp.Int64Size)) + 6 + msgp.StringPrefixSize + len(z.Query) + 15 + msgp.Int64Size + 12 + msgp.Uint64Size + 9 + msgp.Uint64Size + 17 + msgp.BytesPrefixSize + len(z.TableInfoValue) + 23 + msgp.BytesPrefixSize + len(z.ExtraTableInfoValue) + 23 + msgp.ArrayHeaderSize
 	for za0007 := range z.MultipleTableInfosValue {
 		s += msgp.BytesPrefixSize + len(z.MultipleTableInfosValue[za0007])
 	}

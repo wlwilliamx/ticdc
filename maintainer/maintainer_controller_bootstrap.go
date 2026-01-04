@@ -431,11 +431,27 @@ func findHoles(currentSpan utils.Map[*heartbeatpb.TableSpan, *replica.SpanReplic
 	return holes
 }
 
+func indexBootstrapSpans(spans []*heartbeatpb.BootstrapTableSpan) map[common.DispatcherID]*heartbeatpb.BootstrapTableSpan {
+	spanInfoByID := make(map[common.DispatcherID]*heartbeatpb.BootstrapTableSpan, len(spans))
+	for _, spanInfo := range spans {
+		if spanInfo == nil || spanInfo.ID == nil {
+			continue
+		}
+		id := common.NewDispatcherIDFromPB(spanInfo.ID)
+		if id.IsZero() {
+			continue
+		}
+		spanInfoByID[id] = spanInfo
+	}
+	return spanInfoByID
+}
+
 func (c *Controller) restoreCurrentWorkingOperators(
 	allNodesResp map[node.ID]*heartbeatpb.MaintainerBootstrapResponse,
 	tableSplitMap map[int64]bool,
 ) error {
 	for node, resp := range allNodesResp {
+		spanInfoByID := indexBootstrapSpans(resp.Spans)
 		for _, req := range resp.Operators {
 			// Validate
 			if req == nil || req.Config == nil || req.Config.DispatcherID == nil {
@@ -445,17 +461,21 @@ func (c *Controller) restoreCurrentWorkingOperators(
 				continue
 			}
 			dispatcherID := common.NewDispatcherIDFromPB(req.Config.DispatcherID)
+			if dispatcherID.IsZero() {
+				log.Warn("bootstrap operator has invalid dispatcher id, skip restoring it",
+					zap.String("nodeID", node.String()),
+					zap.String("changefeed", resp.ChangefeedID.String()))
+				continue
+			}
+			spanInfo := spanInfoByID[dispatcherID]
 			span := req.Config.Span
 			schemaID := req.Config.SchemaID
-			if span == nil {
-				for _, spanInfo := range resp.Spans {
-					if common.NewDispatcherIDFromPB(spanInfo.ID) == dispatcherID {
-						span = spanInfo.Span
-						if schemaID == 0 {
-							schemaID = spanInfo.SchemaID
-						}
-						break
-					}
+			if spanInfo != nil {
+				if span == nil {
+					span = spanInfo.Span
+				}
+				if schemaID == 0 {
+					schemaID = spanInfo.SchemaID
 				}
 			}
 			if span == nil {
@@ -469,37 +489,67 @@ func (c *Controller) restoreCurrentWorkingOperators(
 			}
 			spanController := c.getSpanController(req.Config.Mode)
 			replicaSet := spanController.GetTaskByID(dispatcherID)
-			if replicaSet != nil {
-				log.Error("found duplicate replica set, which should not happen",
-					zap.String("nodeID", node.String()),
-					zap.String("changefeed", resp.ChangefeedID.String()),
-					zap.Any("replicaSet", replicaSet))
-				return errors.New("duplicate replica set found")
-			}
 
-			// Create a new replica set for the span, and add it to the span controller
-			replicaSet = replica.NewSpanReplication(
-				c.changefeedID,
-				dispatcherID,
-				schemaID,
-				span,
-				req.Config.StartTs,
-				req.Config.Mode,
-				spanController.ShouldEnableSplit(tableSplitMap[span.TableID]),
-			)
-			spanController.AddAbsentReplicaSet(replicaSet)
-
-			// Handle the operator based on the schedule action and its original operator type
 			switch req.ScheduleAction {
 			case heartbeatpb.ScheduleAction_Create:
+				if spanInfo != nil {
+					log.Debug("dispatcher already exists, skip restoring add operator",
+						zap.String("nodeID", node.String()),
+						zap.String("changefeed", resp.ChangefeedID.String()),
+						zap.String("dispatcherID", dispatcherID.String()))
+					continue
+				}
+				if replicaSet != nil && replicaSet.IsScheduled() {
+					log.Debug("dispatcher already scheduled, skip restoring add operator",
+						zap.String("nodeID", node.String()),
+						zap.String("changefeed", resp.ChangefeedID.String()),
+						zap.String("dispatcherID", dispatcherID.String()))
+					continue
+				}
+				if replicaSet == nil {
+					// Create a new absent replica set for the add operator.
+					replicaSet = replica.NewSpanReplication(
+						c.changefeedID,
+						dispatcherID,
+						schemaID,
+						span,
+						req.Config.StartTs,
+						req.Config.Mode,
+						spanController.ShouldEnableSplit(tableSplitMap[span.TableID]),
+					)
+					spanController.AddAbsentReplicaSet(replicaSet)
+				}
 				err, done := c.handleCurrentWorkingAdd(req, spanController, replicaSet, node, resp)
 				if done {
 					return err
 				}
 			case heartbeatpb.ScheduleAction_Remove:
+				if replicaSet == nil {
+					if spanInfo == nil {
+						log.Warn("bootstrap remove operator missing span info, skip restoring it",
+							zap.String("nodeID", node.String()),
+							zap.String("changefeed", resp.ChangefeedID.String()),
+							zap.String("dispatcherID", dispatcherID.String()),
+							zap.String("operatorType", req.OperatorType.String()))
+						continue
+					}
+					replicaSet = c.createSpanReplication(
+						spanInfo,
+						node,
+						spanController.ShouldEnableSplit(tableSplitMap[spanInfo.Span.TableID]),
+					)
+					spanController.AddReplicatingSpan(replicaSet)
+				} else if replicaSet.GetNodeID() == "" {
+					replicaSet.SetNodeID(node)
+				}
 				err, done := c.handleCurrentWorkingRemove(req, spanController, replicaSet, node, resp)
 				if done {
 					return err
+				}
+				if req.OperatorType == heartbeatpb.OperatorType_O_Remove {
+					if _, ok := tableSplitMap[span.TableID]; !ok {
+						spanController.RemoveReplicatingSpan(replicaSet)
+					}
 				}
 			}
 		}

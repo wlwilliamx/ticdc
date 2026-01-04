@@ -15,5 +15,5 @@ cdc-junit-report.xml
 
 /tests/integration_tests/*/test_out_data
 
-# redo applier temp storage
-pkg/applier/_insert_storage.tmp
+# temp files
+*.tmp

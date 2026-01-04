@@ -36,32 +36,43 @@ import (
 // only for test
 // moveTable is used for inner api(which just for make test cases convience) to force move a table to a target node.
 // moveTable only works for the complete table, not for the table splited.
-func (c *Controller) moveTable(tableId int64, targetNode node.ID, mode int64) error {
+func (c *Controller) moveTable(tableID int64, targetNode node.ID, mode int64, wait bool) error {
 	if common.IsRedoMode(mode) && !c.enableRedo {
 		return nil
 	}
 	spanController := c.getSpanController(mode)
 	operatorController := c.getOperatorController(mode)
 
-	if err := c.checkParams(tableId, targetNode, mode); err != nil {
+	if err := c.checkParams(tableID, targetNode, mode); err != nil {
 		return err
 	}
 
-	replications := spanController.GetTasksByTableID(tableId)
+	replications := spanController.GetTasksByTableID(tableID)
 	if len(replications) != 1 {
-		return errors.ErrTableIsNotFounded.GenWithStackByArgs("unexpected number of replications found for table in this node; tableID is %s, replication count is %s", tableId, len(replications))
+		return errors.ErrTableIsNotFounded.GenWithStackByArgs("unexpected number of replications found for table in this node; tableID is %s, replication count is %s", tableID, len(replications))
 	}
 
 	replication := replications[0]
 
 	if replication.GetNodeID() == targetNode {
-		log.Info("table is already on the target node", zap.Int64("tableID", tableId), zap.String("targetNode", targetNode.String()))
+		log.Info("table is already on the target node", zap.Int64("tableID", tableID), zap.String("targetNode", targetNode.String()))
 		return nil
 	}
 	op := operatorController.NewMoveOperator(replication, replication.GetNodeID(), targetNode)
 	ret := operatorController.AddOperator(op)
 	if !ret {
-		return errors.ErrOperatorIsNil.GenWithStackByArgs("unexpected error in create move operator")
+		existing := operatorController.GetOperator(op.ID())
+		if existing == nil {
+			return errors.ErrOperatorIsNil.GenWithStackByArgs("add operator failed")
+		}
+		if existing.Type() != "move" {
+			return errors.ErrOperatorIsNil.GenWithStackByArgs("unexpected existing operator type: %s", existing.Type())
+		}
+		op = existing
+	}
+
+	if !wait {
+		return nil
 	}
 
 	// check the op is finished or not

@@ -142,7 +142,7 @@ function run() {
 
 	enable_failpoint --addr "$origin_addr" --name "$FAILPOINT_NAME" --expr "return(true)"
 
-	move_table_with_retry "$target_addr" $table_id "$changefeed_id" 10
+	move_table_with_retry "$target_addr" $table_id "$changefeed_id" 10 0 false
 	wait_for_table_on_addr "$api_addr" "$changefeed_id" "$table_id" "$origin_addr"
 
 	maintainer_host=${maintainer_addr%:*}

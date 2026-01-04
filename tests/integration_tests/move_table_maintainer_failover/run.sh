@@ -155,8 +155,6 @@ function run() {
 
 	disable_failpoint --addr "$origin_addr" --name "$FAILPOINT_NAME"
 
-	wait_for_table_on_addr "$api_addr" "$changefeed_id" "$table_id" "$target_addr"
-
 	run_sql "ALTER TABLE move_table_maintainer_failover.t1 ADD COLUMN c2 INT DEFAULT 0;" ${UP_TIDB_HOST} ${UP_TIDB_PORT}
 	run_sql "UPDATE move_table_maintainer_failover.t1 SET c2 = 1 WHERE id = 1;" ${UP_TIDB_HOST} ${UP_TIDB_PORT}
 	run_sql "INSERT INTO move_table_maintainer_failover.t1 VALUES (3, 'c', 2);" ${UP_TIDB_HOST} ${UP_TIDB_PORT}

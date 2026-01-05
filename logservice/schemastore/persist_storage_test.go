@@ -3270,3 +3270,30 @@ func TestUpdateDDLHistoryForAddDropTable_CreateTableLikeAddsReferTable(t *testin
 	require.Equal(t, []uint64{10}, args.tablesDDLHistory[112])
 	require.Empty(t, args.tablesDDLHistory[101])
 }
+
+func TestExtractTableInfoFuncForSingleTableDDL_CreateTableLikeReferTableIgnored(t *testing.T) {
+	rawEvent := &PersistedDDLEvent{
+		Type:         byte(model.ActionCreateTable),
+		TableID:      140,
+		ExtraTableID: 138,
+		Query:        "CREATE TABLE `b` LIKE `a`",
+	}
+
+	require.NotPanics(t, func() {
+		tableInfo, deleted := extractTableInfoFuncForSingleTableDDL(rawEvent, 138)
+		require.Nil(t, tableInfo)
+		require.False(t, deleted)
+	})
+
+	rawEvent.ReferTablePartitionIDs = []int64{111, 112}
+	require.NotPanics(t, func() {
+		tableInfo, deleted := extractTableInfoFuncForSingleTableDDL(rawEvent, 111)
+		require.Nil(t, tableInfo)
+		require.False(t, deleted)
+	})
+	require.NotPanics(t, func() {
+		tableInfo, deleted := extractTableInfoFuncForSingleTableDDL(rawEvent, 112)
+		require.Nil(t, tableInfo)
+		require.False(t, deleted)
+	})
+}

@@ -1453,6 +1453,21 @@ func extractTableInfoFuncForSingleTableDDL(event *PersistedDDLEvent, tableID int
 			return common.WrapTableInfo(event.SchemaName, event.TableInfo), false
 		}
 	}
+
+	// The DDL "CREATE TABLE ... LIKE ..." may be added to the ddl history of the referenced table
+	// (or its physical partition IDs) to ensure those tables are blocked while this DDL is executing.
+	// It does not change the schema of the referenced table itself, so we should ignore it when
+	// building the table info store for the referenced table.
+	if event.Type == byte(model.ActionCreateTable) && event.ExtraTableID != 0 {
+		if tableID == event.ExtraTableID {
+			return nil, false
+		}
+		for _, id := range event.ReferTablePartitionIDs {
+			if tableID == id {
+				return nil, false
+			}
+		}
+	}
 	log.Panic("should not reach here",
 		zap.Any("type", event.Type),
 		zap.String("query", event.Query),

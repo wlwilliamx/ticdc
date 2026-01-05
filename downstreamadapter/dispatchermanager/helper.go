@@ -18,6 +18,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/pingcap/failpoint"
 	"github.com/pingcap/log"
 	"github.com/pingcap/ticdc/downstreamadapter/dispatcher"
 	"github.com/pingcap/ticdc/eventpb"
@@ -214,6 +215,9 @@ func (h *SchedulerDispatcherRequestHandler) Handle(dispatcherManager *Dispatcher
 	}
 
 	// use the infos to create dispatchers, and delete the current operators after created, just indicate the operator is finished
+	if len(infos) > 0 || len(redoInfos) > 0 {
+		failpoint.Inject("BlockCreateDispatcher", nil)
+	}
 	createDispatcherByInfo(dispatcherManager, infos, redoInfos)
 	return false
 }

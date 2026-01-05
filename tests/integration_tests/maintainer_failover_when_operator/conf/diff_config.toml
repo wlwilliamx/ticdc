@@ -7,13 +7,13 @@ export-fix-sql = true
 check-struct-only = false
 
 [task]
-    output-dir = "/tmp/tidb_cdc_test/move_table_maintainer_failover/sync_diff/output"
+    output-dir = "/tmp/tidb_cdc_test/maintainer_failover_when_operator/sync_diff/output"
 
     source-instances = ["mysql1"]
 
     target-instance = "tidb0"
 
-    target-check-tables = ["move_table_maintainer_failover.t1"]
+    target-check-tables = ["maintainer_failover_when_operator.t1", "maintainer_failover_when_operator.t2", "maintainer_failover_when_operator.t4", "maintainer_failover_when_operator.t5"]
 
 [data-sources]
 [data-sources.mysql1]

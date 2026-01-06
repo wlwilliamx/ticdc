@@ -33,7 +33,17 @@ function run() {
 
 	run_sql "alter table test.t modify column col decimal(30,10);"
 	run_sql "alter table test.t add index idx_col (col);"
-	ensure 60 "run_sql 'SELECT JOB_ID FROM information_schema.ddl_jobs WHERE DB_NAME = \"test\" AND TABLE_NAME = \"t\" AND JOB_TYPE LIKE \"add index%\" AND (STATE = \"running\" OR STATE = \"queueing\") LIMIT 1;' ${DOWN_TIDB_HOST} ${DOWN_TIDB_PORT} && check_contains 'JOB_ID:'"
+	# The downstream add index DDL may finish quickly with fast reorg enabled,
+	# so we need a short fixed-interval polling to avoid missing the running window.
+	for i in $(seq 1 120); do
+		run_sql 'SELECT JOB_ID FROM information_schema.ddl_jobs WHERE DB_NAME = "test" AND TABLE_NAME = "t" AND JOB_TYPE LIKE "add index%" AND (STATE = "running" OR STATE = "queueing") LIMIT 1;' \
+			"${DOWN_TIDB_HOST}" "${DOWN_TIDB_PORT}" >/dev/null 2>&1 || true
+		if check_contains 'JOB_ID:' >/dev/null 2>&1; then
+			break
+		fi
+		sleep 0.5
+	done
+	check_contains 'JOB_ID:'
 	run_sql "create table test.t_like like test.t;"
 	run_sql "insert into test.t values (1, 1);"
 	run_sql "create table test.finish_mark (a int primary key);"

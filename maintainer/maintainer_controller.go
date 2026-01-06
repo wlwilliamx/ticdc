@@ -174,6 +174,21 @@ func (c *Controller) HandleStatus(from node.ID, statusList []*heartbeatpb.TableS
 			continue
 		}
 		spanController.UpdateStatus(stm, status)
+
+		// If a dispatcher becomes non-working but there's no operator handling it,
+		// it means the dispatcher is removed unexpectedly (e.g. maintainer failover loses the operator),
+		// and we must reschedule it to avoid the dispatcher being lost forever.
+		if status.ComponentStatus == heartbeatpb.ComponentState_Stopped ||
+			status.ComponentStatus == heartbeatpb.ComponentState_Removed {
+			if op := operatorController.GetOperator(dispatcherID); op == nil {
+				log.Warn("dispatcher becomes non-working without operator, mark span absent for rescheduling",
+					zap.String("changefeed", c.changefeedID.Name()),
+					zap.String("from", from.String()),
+					zap.String("dispatcherID", dispatcherID.String()),
+					zap.Any("status", status))
+				spanController.MarkSpanAbsent(stm)
+			}
+		}
 	}
 }
 

@@ -656,7 +656,6 @@ func (c *Controller) handleCurrentWorkingRemove(
 			)
 			return errors.ErrOperatorIsNil.GenWithStack("add operator failed when bootstrap"), true
 		}
-		op.Start()
 	// 2. If the original operator is move or split, which contains a remove part,
 	// we just need to finish the first remove part, this is enough to keep the operator consistent.
 	// The following add part will be triggered by our basic scheduling logic.
@@ -682,7 +681,6 @@ func (c *Controller) handleCurrentWorkingRemove(
 			)
 			return errors.ErrOperatorIsNil.GenWithStack("add operator failed when bootstrap"), true
 		}
-		op.Start()
 	}
 	return nil, false
 }

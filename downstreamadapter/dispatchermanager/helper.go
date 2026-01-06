@@ -237,12 +237,14 @@ func preCheckForSchedulerHandler(req SchedulerDispatcherRequest, dispatcherManag
 		return common.DispatcherID{}, false
 	}
 	// If there is already an operator for the span, skip this request.
-	_, exists := dispatcherManager.currentOperatorMap.Load(operatorKey)
-	if exists {
+	_, operatorExists := dispatcherManager.currentOperatorMap.Load(operatorKey)
+	_, dispatcherExists := dispatcherManager.dispatcherMap.Get(operatorKey)
+	if operatorExists || !dispatcherExists {
 		return common.DispatcherID{}, false
 	}
-	_, redoExists := dispatcherManager.redoCurrentOperatorMap.Load(operatorKey)
-	if redoExists {
+	_, redoOperatorExists := dispatcherManager.redoCurrentOperatorMap.Load(operatorKey)
+	_, redoDispatcherExists := dispatcherManager.redoDispatcherMap.Get(operatorKey)
+	if redoOperatorExists || !redoDispatcherExists {
 		return common.DispatcherID{}, false
 	}
 	return operatorKey, true

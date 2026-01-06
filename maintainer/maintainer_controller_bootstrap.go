@@ -612,7 +612,8 @@ func (c *Controller) handleCurrentWorkingAdd(
 	// same as move, just finish the add part.
 	case heartbeatpb.OperatorType_O_Add, heartbeatpb.OperatorType_O_Move, heartbeatpb.OperatorType_O_Split:
 		op := operator.NewAddDispatcherOperator(spanController, replicaSet, node, heartbeatpb.OperatorType_O_Add)
-		if ok := c.operatorController.AddOperator(op); !ok {
+		operatorController := c.getOperatorController(req.Config.Mode)
+		if ok := operatorController.AddOperator(op); !ok {
 			log.Error("add operator failed when dealing current working operators in bootstrap, should not happen",
 				zap.String("nodeID", node.String()),
 				zap.String("changefeed", resp.ChangefeedID.String()),
@@ -635,6 +636,7 @@ func (c *Controller) handleCurrentWorkingRemove(
 	node node.ID,
 	resp *heartbeatpb.MaintainerBootstrapResponse,
 ) (error, bool) {
+	operatorController := c.getOperatorController(req.Config.Mode)
 	// Check the original operator of this remove operator
 	switch req.OperatorType {
 	// 1. If the original operator is remove, just finish it directly by adding a new remove operator.
@@ -645,7 +647,7 @@ func (c *Controller) handleCurrentWorkingRemove(
 			heartbeatpb.OperatorType_O_Remove,
 			nil,
 		)
-		if ok := c.operatorController.AddOperator(op); !ok {
+		if ok := operatorController.AddOperator(op); !ok {
 			log.Error("add operator failed when dealing current working operators in bootstrap, should not happen",
 				zap.String("nodeID", node.String()),
 				zap.String("changefeed", resp.ChangefeedID.String()),
@@ -670,7 +672,7 @@ func (c *Controller) handleCurrentWorkingRemove(
 				}
 			},
 		)
-		if ok := c.operatorController.AddOperator(op); !ok {
+		if ok := operatorController.AddOperator(op); !ok {
 			log.Error("add operator failed when dealing current working operators in bootstrap, should not happen",
 				zap.String("nodeID", node.String()),
 				zap.String("changefeed", resp.ChangefeedID.String()),

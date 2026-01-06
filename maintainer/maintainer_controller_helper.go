@@ -47,48 +47,68 @@ func (c *Controller) moveTable(tableID int64, targetNode node.ID, mode int64, wa
 		return err
 	}
 
-	replications := spanController.GetTasksByTableID(tableID)
-	if len(replications) != 1 {
-		return errors.ErrTableIsNotFounded.GenWithStackByArgs("unexpected number of replications found for table in this node; tableID is %s, replication count is %s", tableID, len(replications))
-	}
-
-	replication := replications[0]
-
-	if replication.GetNodeID() == targetNode {
-		log.Info("table is already on the target node", zap.Int64("tableID", tableID), zap.String("targetNode", targetNode.String()))
-		return nil
-	}
-	op := operatorController.NewMoveOperator(replication, replication.GetNodeID(), targetNode)
-	ret := operatorController.AddOperator(op)
-	if !ret {
-		existing := operatorController.GetOperator(op.ID())
-		if existing == nil {
-			return errors.ErrOperatorIsNil.GenWithStackByArgs("add operator failed")
-		}
-		if existing.Type() != "move" {
-			return errors.ErrOperatorIsNil.GenWithStackByArgs("unexpected existing operator type: %s", existing.Type())
-		}
-		op = existing
-	}
-
-	if !wait {
-		return nil
-	}
-
-	// check the op is finished or not
-	count := 0
 	maxTry := 30
-	for !op.IsFinished() && count < maxTry {
-		time.Sleep(2 * time.Second)
-		count += 1
-		log.Info("wait for move table operator finished", zap.Int("count", count))
-	}
+	for {
+		replications := spanController.GetTasksByTableID(tableID)
+		if len(replications) != 1 {
+			return errors.ErrTableIsNotFounded.GenWithStackByArgs("unexpected number of replications found for table in this node; tableID is %s, replication count is %s", tableID, len(replications))
+		}
 
-	if !op.IsFinished() {
-		return errors.ErrTimeout.GenWithStackByArgs("move table operator is timeout")
-	}
+		replication := replications[0]
 
-	return nil
+		if replication.GetNodeID() == targetNode {
+			log.Info("table is already on the target node", zap.Int64("tableID", tableID), zap.String("targetNode", targetNode.String()))
+			return nil
+		}
+
+		op := operatorController.NewMoveOperator(replication, replication.GetNodeID(), targetNode)
+		ret := operatorController.AddOperator(op)
+		if !ret {
+			existing := operatorController.GetOperator(op.ID())
+			if existing == nil {
+				return errors.ErrOperatorIsNil.GenWithStackByArgs("add operator failed")
+			}
+			switch existing.Type() {
+			case "move":
+				op = existing
+			case "add":
+				if !wait {
+					return errors.ErrOperatorIsNil.GenWithStackByArgs("table is being added, retry later")
+				}
+				count := 0
+				for !existing.IsFinished() && count < maxTry {
+					time.Sleep(2 * time.Second)
+					count += 1
+					log.Info("wait for existing operator finished before moving table",
+						zap.Int("count", count),
+						zap.String("operatorType", existing.Type()))
+				}
+				if !existing.IsFinished() {
+					return errors.ErrTimeout.GenWithStackByArgs("existing operator is timeout")
+				}
+				continue
+			default:
+				return errors.ErrOperatorIsNil.GenWithStackByArgs("unexpected existing operator type: %s", existing.Type())
+			}
+		}
+
+		if !wait {
+			return nil
+		}
+
+		// check the op is finished or not
+		count := 0
+		for !op.IsFinished() && count < maxTry {
+			time.Sleep(2 * time.Second)
+			count += 1
+			log.Info("wait for move table operator finished", zap.Int("count", count))
+		}
+
+		if !op.IsFinished() {
+			return errors.ErrTimeout.GenWithStackByArgs("move table operator is timeout")
+		}
+		return nil
+	}
 }
 
 // only for test

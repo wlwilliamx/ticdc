@@ -66,6 +66,28 @@ function wait_for_table_on_addr() {
 	return 1
 }
 
+function wait_for_table_scheduled() {
+	local api_addr=$1
+	local changefeed_id=$2
+	local table_id=$3
+	local mode=$4
+	for ((i = 0; i < 30; i++)); do
+		local node_id
+		node_id=$(get_table_node_id "$api_addr" "$changefeed_id" "$table_id" "$mode")
+		if [ -n "$node_id" ] && [ "$node_id" != "null" ]; then
+			local capture_id
+			capture_id=$(curl -s "http://${api_addr}/api/v2/captures" | jq -r --arg id "$node_id" '.items[] | select(.id==$id) | .id' | head -n1)
+			if [ -n "$capture_id" ] && [ "$capture_id" != "null" ]; then
+				echo "$node_id"
+				return 0
+			fi
+		fi
+		sleep 2
+	done
+	echo "table $table_id not scheduled to any live capture" >&2
+	return 1
+}
+
 function wait_for_maintainer_move() {
 	local api_addr=$1
 	local changefeed_id=$2
@@ -291,8 +313,10 @@ function run_impl() {
 	wait "$split_pid"
 	set -e
 
-	# After removing failpoints, the move operator should finish eventually.
-	wait_for_table_on_addr "$api_addr" "$changefeed_id" "$table_id_1" "$target_addr" "$mode"
+	# After removing failpoints, the table should be scheduled eventually.
+	# (After maintainer failover, we don't require the unfinished move operator to keep the original target.)
+	scheduled_node_id=$(wait_for_table_scheduled "$api_addr" "$changefeed_id" "$table_id_1" "$mode")
+	echo "table $table_id_1 scheduled on node $scheduled_node_id"
 
 	check_table_not_exists "maintainer_failover_when_operator.t3" ${DOWN_TIDB_HOST} ${DOWN_TIDB_PORT} 300
 

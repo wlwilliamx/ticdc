@@ -4,7 +4,7 @@ set -eu
 
 CUR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source $CUR/../_utils/test_prepare
-WORK_DIR=$OUT_DIR/$TEST_NAME
+ROOT_WORK_DIR=$OUT_DIR/$TEST_NAME
 CDC_BINARY=cdc.test
 SINK_TYPE=$1
 
@@ -22,8 +22,18 @@ function get_table_node_id() {
 	local api_addr=$1
 	local changefeed_id=$2
 	local table_id=$3
-	curl -s "http://${api_addr}/api/v2/changefeeds/${changefeed_id}/tables?keyspace=$KEYSPACE_NAME" |
+	local mode=$4
+	curl -s "http://${api_addr}/api/v2/changefeeds/${changefeed_id}/tables?keyspace=$KEYSPACE_NAME&mode=$mode" |
 		jq -r --argjson tid "$table_id" '.items[] | select(.table_ids | index($tid)) | .node_id' | head -n1
+}
+
+function get_table_replication_count() {
+	local api_addr=$1
+	local changefeed_id=$2
+	local table_id=$3
+	local mode=$4
+	curl -s "http://${api_addr}/api/v2/changefeeds/${changefeed_id}/tables?keyspace=$KEYSPACE_NAME&mode=$mode" |
+		jq -r --argjson tid "$table_id" '[.items[].table_ids[] | select(. == $tid)] | length'
 }
 
 function get_maintainer_addr() {
@@ -37,6 +47,7 @@ function wait_for_table_on_addr() {
 	local changefeed_id=$2
 	local table_id=$3
 	local target_addr=$4
+	local mode=$5
 	for ((i = 0; i < 30; i++)); do
 		local target_id
 		target_id=$(get_capture_id_by_addr "$api_addr" "$target_addr")
@@ -45,7 +56,7 @@ function wait_for_table_on_addr() {
 			continue
 		fi
 		local node_id
-		node_id=$(get_table_node_id "$api_addr" "$changefeed_id" "$table_id")
+		node_id=$(get_table_node_id "$api_addr" "$changefeed_id" "$table_id" "$mode")
 		if [ "$node_id" == "$target_id" ]; then
 			return 0
 		fi
@@ -89,20 +100,31 @@ function ensure_table_on_addr() {
 	local changefeed_id=$2
 	local table_id=$3
 	local target_addr=$4
+	local mode=$5
 
-	local target_id
-	target_id=$(get_capture_id_by_addr "$api_addr" "$target_addr")
-	if [ -z "$target_id" ] || [ "$target_id" == "null" ]; then
-		echo "failed to get capture id for $target_addr" >&2
-		return 1
-	fi
+	# move-table only works when the table has exactly one replication (not split).
+	move_table_with_retry "$target_addr" $table_id "$changefeed_id" 10 "$mode"
+	wait_for_table_on_addr "$api_addr" "$changefeed_id" "$table_id" "$target_addr" "$mode"
+}
 
-	local current_node_id
-	current_node_id=$(get_table_node_id "$api_addr" "$changefeed_id" "$table_id")
-	if [ "$current_node_id" != "$target_id" ]; then
-		move_table_with_retry "$target_addr" $table_id "$changefeed_id" 10
-		wait_for_table_on_addr "$api_addr" "$changefeed_id" "$table_id" "$target_addr"
-	fi
+function ensure_table_single_replication() {
+	local api_addr=$1
+	local changefeed_id=$2
+	local table_id=$3
+	local mode=$4
+
+	for ((i = 0; i < 20; i++)); do
+		local cnt
+		cnt=$(get_table_replication_count "$api_addr" "$changefeed_id" "$table_id" "$mode")
+		if [ -n "$cnt" ] && [ "$cnt" != "null" ] && [ "$cnt" -eq 1 ]; then
+			return 0
+		fi
+		# Merge once to reduce replications; repeat until it becomes 1.
+		merge_table_with_retry "$table_id" "$changefeed_id" 3 "$mode"
+		sleep 1
+	done
+	echo "table $table_id still has more than one replication after merge retries" >&2
+	return 1
 }
 
 function enable_failpoint_on_all_addrs() {
@@ -122,34 +144,63 @@ function disable_failpoint_on_all_addrs_best_effort() {
 	set -e
 }
 
-function run() {
-	rm -rf $WORK_DIR && mkdir -p $WORK_DIR
+function create_changefeed_config() {
+	local mode=$1
+	local work_dir=$2
+	local target_config_path=$3
 
-	start_tidb_cluster --workdir $WORK_DIR
+	cat "$CUR/conf/changefeed.toml" >"$target_config_path"
+	if [ "$mode" -eq 1 ]; then
+		cat >>"$target_config_path" <<EOF
+
+[consistent]
+level = "eventual"
+storage = "file://$work_dir/redo"
+EOF
+	fi
+}
+
+function create_diff_config() {
+	local work_dir=$1
+	local target_config_path=$2
+
+	# update output-dir to point to current work directory to avoid collision between subcases.
+	sed "s|output-dir = \".*\"|output-dir = \"$work_dir/sync_diff/output\"|" "$CUR/conf/diff_config.toml" >"$target_config_path"
+}
+
+function run_impl() {
+	local mode=$1
+	local work_dir=$2
+
+	rm -rf "$work_dir" && mkdir -p "$work_dir"
+
+	start_tidb_cluster --workdir "$work_dir"
 
 	pd_addr="http://$UP_PD_HOST_1:$UP_PD_PORT_1"
 
 	# Disable balance scheduler to avoid unexpected auto split/move interfering with this test.
 	export GO_FAILPOINTS='github.com/pingcap/ticdc/maintainer/scheduler/StopBalanceScheduler=return(true)'
-	run_cdc_server --workdir $WORK_DIR --binary $CDC_BINARY --logsuffix 1 --addr "127.0.0.1:8300"
-	run_cdc_server --workdir $WORK_DIR --binary $CDC_BINARY --logsuffix 2 --addr "127.0.0.1:8301"
-	run_cdc_server --workdir $WORK_DIR --binary $CDC_BINARY --logsuffix 3 --addr "127.0.0.1:8302"
+	run_cdc_server --workdir "$work_dir" --binary $CDC_BINARY --logsuffix 1 --addr "127.0.0.1:8300"
+	run_cdc_server --workdir "$work_dir" --binary $CDC_BINARY --logsuffix 2 --addr "127.0.0.1:8301"
+	run_cdc_server --workdir "$work_dir" --binary $CDC_BINARY --logsuffix 3 --addr "127.0.0.1:8302"
 	export GO_FAILPOINTS=''
 
 	TOPIC_NAME="ticdc-move-table-maintainer-failover-$RANDOM"
 	case $SINK_TYPE in
 	kafka) SINK_URI="kafka://127.0.0.1:9092/$TOPIC_NAME?protocol=open-protocol&partition-num=4&kafka-version=${KAFKA_VERSION}" ;;
-	storage) SINK_URI="file://$WORK_DIR/storage_test/$TOPIC_NAME?protocol=canal-json&enable-tidb-extension=true" ;;
+	storage) SINK_URI="file://$work_dir/storage_test/$TOPIC_NAME?protocol=canal-json&enable-tidb-extension=true" ;;
 	pulsar)
-		run_pulsar_cluster $WORK_DIR normal
+		run_pulsar_cluster "$work_dir" normal
 		SINK_URI="pulsar://127.0.0.1:6650/$TOPIC_NAME?protocol=canal-json&enable-tidb-extension=true"
 		;;
 	*) SINK_URI="mysql://normal:123456@127.0.0.1:3306/?max-txn-row=1" ;;
 	esac
-	changefeed_id=$(cdc_cli_changefeed create --sink-uri="$SINK_URI" --config="$CUR/conf/changefeed.toml" | grep '^ID:' | head -n1 | awk '{print $2}')
+	changefeed_config="$work_dir/changefeed.toml"
+	create_changefeed_config "$mode" "$work_dir" "$changefeed_config"
+	changefeed_id=$(cdc_cli_changefeed create --sink-uri="$SINK_URI" --config="$changefeed_config" | grep '^ID:' | head -n1 | awk '{print $2}')
 	case $SINK_TYPE in
-	kafka) run_kafka_consumer $WORK_DIR $SINK_URI ;;
-	storage) run_storage_consumer $WORK_DIR $SINK_URI "" "" ;;
+	kafka) run_kafka_consumer "$work_dir" $SINK_URI ;;
+	storage) run_storage_consumer "$work_dir" $SINK_URI "" "" ;;
 	pulsar) run_pulsar_consumer --upstream-uri $SINK_URI ;;
 	esac
 
@@ -184,9 +235,12 @@ function run() {
 	fi
 
 	api_addr=$origin_addr
-	ensure_table_on_addr "$api_addr" "$changefeed_id" "$table_id_1" "$origin_addr"
-	ensure_table_on_addr "$api_addr" "$changefeed_id" "$table_id_2" "$origin_addr"
-	ensure_table_on_addr "$api_addr" "$changefeed_id" "$table_id_3" "$origin_addr"
+	ensure_table_single_replication "$api_addr" "$changefeed_id" "$table_id_1" "$mode"
+	ensure_table_single_replication "$api_addr" "$changefeed_id" "$table_id_2" "$mode"
+	ensure_table_single_replication "$api_addr" "$changefeed_id" "$table_id_3" "$mode"
+	ensure_table_on_addr "$api_addr" "$changefeed_id" "$table_id_1" "$origin_addr" "$mode"
+	ensure_table_on_addr "$api_addr" "$changefeed_id" "$table_id_2" "$origin_addr" "$mode"
+	ensure_table_on_addr "$api_addr" "$changefeed_id" "$table_id_3" "$origin_addr" "$mode"
 
 	enable_failpoint --addr "$origin_addr" --name "$FAILPOINT_NOT_READY_TO_CLOSE_DISPATCHER" --expr "return(true)"
 	enable_failpoint_on_all_addrs "$FAILPOINT_BLOCK_CREATE_DISPATCHER" "pause"
@@ -208,13 +262,14 @@ function run() {
 
 	# Split operator: issue split and keep it in-progress due to NotReadyToCloseDispatcher.
 	set +e
-	split_table_with_retry $table_id_2 "$changefeed_id" 1 0 &
+	split_table_with_retry $table_id_2 "$changefeed_id" 1 "$mode" &
 	split_pid=$!
 	set -e
 
-	move_table_with_retry "$target_addr" $table_id_1 "$changefeed_id" 10 0 false
+	move_table_with_retry "$target_addr" $table_id_1 "$changefeed_id" 10 "$mode" false
+
 	# failpoint is enabled on origin, so the table should not move to target
-	wait_for_table_on_addr "$api_addr" "$changefeed_id" "$table_id_1" "$origin_addr"
+	wait_for_table_on_addr "$api_addr" "$changefeed_id" "$table_id_1" "$origin_addr" "$mode"
 
 	# Remove operator: drop one table while dispatcher close is blocked.
 	run_sql "DROP TABLE maintainer_failover_when_operator.t3;" ${UP_TIDB_HOST} ${UP_TIDB_PORT}
@@ -236,6 +291,9 @@ function run() {
 	wait "$split_pid"
 	set -e
 
+	# After removing failpoints, the move operator should finish eventually.
+	wait_for_table_on_addr "$api_addr" "$changefeed_id" "$table_id_1" "$target_addr" "$mode"
+
 	check_table_not_exists "maintainer_failover_when_operator.t3" ${DOWN_TIDB_HOST} ${DOWN_TIDB_PORT} 300
 
 	run_sql "ALTER TABLE maintainer_failover_when_operator.t1 ADD COLUMN c2 INT DEFAULT 0;" ${UP_TIDB_HOST} ${UP_TIDB_PORT}
@@ -245,12 +303,36 @@ function run() {
 	run_sql "INSERT INTO maintainer_failover_when_operator.t4 VALUES (3, 'c');" ${UP_TIDB_HOST} ${UP_TIDB_PORT}
 	run_sql "INSERT INTO maintainer_failover_when_operator.t5 VALUES (3, 'c');" ${UP_TIDB_HOST} ${UP_TIDB_PORT}
 
-	check_sync_diff $WORK_DIR $CUR/conf/diff_config.toml
+	diff_config="$work_dir/diff_config.toml"
+	create_diff_config "$work_dir" "$diff_config"
+	check_sync_diff "$work_dir" "$diff_config"
 
 	cleanup_process $CDC_BINARY
 }
 
-trap 'stop_test $WORK_DIR' EXIT
-run "$@"
-check_logs $WORK_DIR
+function run_subcase() {
+	local mode=$1
+	local name=$2
+
+	# redo config is only supported for DB downstream
+	if [ "$mode" -eq 1 ] && [ "$SINK_TYPE" != "mysql" ]; then
+		echo "[$(date)] skip $TEST_NAME redo subcase for sink type: $SINK_TYPE"
+		return 0
+	fi
+
+	# Keep work_dir as "$OUT_DIR/$TEST_NAME", because many _utils scripts (e.g. run_sql) assume
+	# OUT_DIR ends with TEST_NAME and will place logs under "$OUT_DIR/$TEST_NAME".
+	local work_dir="$ROOT_WORK_DIR"
+	echo "[$(date)] <<<<<< run test case $TEST_NAME ($name, mode=$mode) >>>>>>"
+
+	(
+		trap 'stop_test "$work_dir"' EXIT
+		run_impl "$mode" "$work_dir"
+		check_logs "$work_dir"
+		echo "[$(date)] <<<<<< run test case $TEST_NAME ($name, mode=$mode) success! >>>>>>"
+	)
+}
+
+run_subcase 0 "default"
+run_subcase 1 "redo"
 echo "[$(date)] <<<<<< run test case $TEST_NAME success! >>>>>>"

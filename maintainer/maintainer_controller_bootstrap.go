@@ -313,7 +313,7 @@ func (c *Controller) buildTaskInfo(
 	}
 	workingTaskMap := c.buildWorkingTaskMap(allNodesResp, tableSplitMap, mode)
 	// restore current working operators first
-	if err := c.restoreCurrentWorkingOperators(allNodesResp, tableSplitMap); err != nil {
+	if err := c.restoreCurrentWorkingOperators(allNodesResp, tableSplitMap, mode); err != nil {
 		return nil, nil, err
 	}
 	schemaInfos := c.processTablesAndBuildSchemaInfo(tables, workingTaskMap, isMysqlCompatibleBackend, mode)
@@ -469,10 +469,16 @@ func findHoles(currentSpan utils.Map[*heartbeatpb.TableSpan, *replica.SpanReplic
 	return holes
 }
 
-func indexBootstrapSpans(spans []*heartbeatpb.BootstrapTableSpan) map[common.DispatcherID]*heartbeatpb.BootstrapTableSpan {
+func indexBootstrapSpans(
+	spans []*heartbeatpb.BootstrapTableSpan,
+	mode int64,
+) map[common.DispatcherID]*heartbeatpb.BootstrapTableSpan {
 	spanInfoByID := make(map[common.DispatcherID]*heartbeatpb.BootstrapTableSpan, len(spans))
 	for _, spanInfo := range spans {
 		if spanInfo == nil || spanInfo.ID == nil {
+			continue
+		}
+		if spanInfo.Mode != mode {
 			continue
 		}
 		id := common.NewDispatcherIDFromPB(spanInfo.ID)
@@ -487,9 +493,10 @@ func indexBootstrapSpans(spans []*heartbeatpb.BootstrapTableSpan) map[common.Dis
 func (c *Controller) restoreCurrentWorkingOperators(
 	allNodesResp map[node.ID]*heartbeatpb.MaintainerBootstrapResponse,
 	tableSplitMap map[int64]bool,
+	mode int64,
 ) error {
 	for node, resp := range allNodesResp {
-		spanInfoByID := indexBootstrapSpans(resp.Spans)
+		spanInfoByID := indexBootstrapSpans(resp.Spans, mode)
 		for _, req := range resp.Operators {
 			// Validate
 			if req == nil || req.Config == nil || req.Config.DispatcherID == nil {
@@ -503,6 +510,9 @@ func (c *Controller) restoreCurrentWorkingOperators(
 				log.Warn("bootstrap operator has invalid dispatcher id, skip restoring it",
 					zap.String("nodeID", node.String()),
 					zap.String("changefeed", resp.ChangefeedID.String()))
+				continue
+			}
+			if req.Config.Mode != mode {
 				continue
 			}
 			spanInfo := spanInfoByID[dispatcherID]

@@ -274,7 +274,6 @@ func (c *Controller) processTableSpans(
 		if isTableWorking {
 			delete(workingTaskMap, table.TableID)
 		}
-		return
 	} else {
 		spanController.AddNewTable(table, c.startTs)
 	}

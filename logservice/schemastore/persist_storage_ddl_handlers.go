@@ -516,18 +516,20 @@ func getSchemaID(tableMap map[int64]*BasicTableInfo, tableID int64) int64 {
 	return tableInfo.SchemaID
 }
 
+// schemaName should be "Name.O"
 func findSchemaIDByName(databaseMap map[int64]*BasicDatabaseInfo, schemaName string) (int64, bool) {
 	for id, info := range databaseMap {
-		if strings.EqualFold(info.Name, schemaName) {
+		if info.Name == schemaName {
 			return id, true
 		}
 	}
 	return 0, false
 }
 
+// tableName should be "Name.O"
 func findTableIDByName(tableMap map[int64]*BasicTableInfo, schemaID int64, tableName string) (int64, bool) {
 	for id, info := range tableMap {
-		if info.SchemaID == schemaID && strings.EqualFold(info.Name, tableName) {
+		if info.SchemaID == schemaID && info.Name == tableName {
 			return id, true
 		}
 	}

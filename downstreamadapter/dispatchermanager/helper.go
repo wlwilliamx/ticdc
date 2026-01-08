@@ -237,21 +237,20 @@ func preCheckForSchedulerHandler(req SchedulerDispatcherRequest, dispatcherManag
 		return common.DispatcherID{}, false
 	}
 
+	isRedo := common.IsRedoMode(req.Config.Mode)
+	if isRedo && (!dispatcherManager.RedoEnable || dispatcherManager.redoDispatcherMap == nil) {
+		return common.DispatcherID{}, false
+	}
+	if _, operatorExists := dispatcherManager.currentOperatorMap.Load(operatorKey); operatorExists {
+		return common.DispatcherID{}, false
+	}
+
 	// If there is already an operator for the dispatcher, skip this request.
-	var operatorExists bool
 	var dispatcherExists bool
-	if common.IsRedoMode(req.Config.Mode) {
-		if !dispatcherManager.RedoEnable || dispatcherManager.redoDispatcherMap == nil {
-			return common.DispatcherID{}, false
-		}
-		_, operatorExists = dispatcherManager.redoCurrentOperatorMap.Load(operatorKey)
+	if isRedo {
 		_, dispatcherExists = dispatcherManager.redoDispatcherMap.Get(operatorKey)
 	} else {
-		_, operatorExists = dispatcherManager.currentOperatorMap.Load(operatorKey)
 		_, dispatcherExists = dispatcherManager.dispatcherMap.Get(operatorKey)
-	}
-	if operatorExists {
-		return common.DispatcherID{}, false
 	}
 
 	// Action-aware precheck:
@@ -285,7 +284,7 @@ func handleScheduleCreate(
 		SkipDMLAsStartTs: config.SkipDMLAsStartTs,
 	}
 	if common.IsRedoMode(config.Mode) {
-		dispatcherManager.redoCurrentOperatorMap.Store(operatorKey, req)
+		dispatcherManager.currentOperatorMap.Store(operatorKey, req)
 		log.Debug("store current working add operator for redo dispatcher",
 			zap.String("changefeedID", req.ChangefeedID.String()),
 			zap.String("dispatcherID", dispatcherID.String()),
@@ -317,7 +316,7 @@ func handleScheduleRemove(
 			return
 		}
 		if _, exists := dispatcherManager.redoDispatcherMap.Get(dispatcherID); exists {
-			dispatcherManager.redoCurrentOperatorMap.Store(operatorKey, req)
+			dispatcherManager.currentOperatorMap.Store(operatorKey, req)
 			log.Debug("store current working remove operator for redo dispatcher",
 				zap.String("changefeedID", req.ChangefeedID.String()),
 				zap.String("dispatcherID", dispatcherID.String()),
@@ -363,14 +362,14 @@ func createDispatcherByInfo(
 			dispatcherManager.handleError(context.Background(), err)
 		}
 		for _, info := range redoInfos {
-			if v, ok := dispatcherManager.redoCurrentOperatorMap.Load(info.Id); ok {
+			if v, ok := dispatcherManager.currentOperatorMap.Load(info.Id); ok {
 				req := v.(SchedulerDispatcherRequest)
 				log.Debug("delete current working add operator for redo dispatcher",
 					zap.String("changefeedID", dispatcherManager.changefeedID.String()),
 					zap.String("dispatcherID", info.Id.String()),
 					zap.Any("operator", req),
 				)
-				dispatcherManager.redoCurrentOperatorMap.Delete(info.Id)
+				dispatcherManager.currentOperatorMap.Delete(info.Id)
 			} else {
 				log.Error("current working operator not found for redo dispatcher, should not happen", zap.String("id", info.Id.String()))
 			}

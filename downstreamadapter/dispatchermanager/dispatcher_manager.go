@@ -87,9 +87,8 @@ type DispatcherManager struct {
 	dispatcherMap *DispatcherMap[*dispatcher.EventDispatcher]
 	// redoDispatcherMap restore all the redo dispatchers in the DispatcherManager, including table trigger redo dispatcher
 	redoDispatcherMap *DispatcherMap[*dispatcher.RedoDispatcher]
-	// currentOperatorMap stores the current operators for each dispatcher
-	currentOperatorMap     sync.Map // map[common.DispatcherID]SchedulerDispatcherRequest (in dispatcher manager, not heartbeatpb)
-	redoCurrentOperatorMap sync.Map // map[common.DispatcherID]SchedulerDispatcherRequest (in dispatcher manager, not heartbeatpb)
+	// currentOperatorMap stores the current operators for each dispatcher (event and redo).
+	currentOperatorMap sync.Map // map[common.DispatcherID]SchedulerDispatcherRequest (in dispatcher manager, not heartbeatpb)
 	// schemaIDToDispatchers is shared in the DispatcherManager,
 	// it store all the infos about schemaID->Dispatchers
 	// Dispatchers may change the schemaID when meets some special events, such as rename ddl
@@ -176,19 +175,18 @@ func NewDispatcherManager(
 	}
 
 	manager := &DispatcherManager{
-		ctx:                    ctx,
-		dispatcherMap:          newDispatcherMap[*dispatcher.EventDispatcher](),
-		currentOperatorMap:     sync.Map{},
-		redoCurrentOperatorMap: sync.Map{},
-		changefeedID:           changefeedID,
-		keyspaceID:             keyspaceID,
-		pdClock:                pdClock,
-		cancel:                 cancel,
-		config:                 cfConfig,
-		latestWatermark:        NewWatermark(0),
-		latestRedoWatermark:    NewWatermark(0),
-		schemaIDToDispatchers:  dispatcher.NewSchemaIDToDispatchers(),
-		sinkQuota:              cfConfig.MemoryQuota,
+		ctx:                   ctx,
+		dispatcherMap:         newDispatcherMap[*dispatcher.EventDispatcher](),
+		currentOperatorMap:    sync.Map{},
+		changefeedID:          changefeedID,
+		keyspaceID:            keyspaceID,
+		pdClock:               pdClock,
+		cancel:                cancel,
+		config:                cfConfig,
+		latestWatermark:       NewWatermark(0),
+		latestRedoWatermark:   NewWatermark(0),
+		schemaIDToDispatchers: dispatcher.NewSchemaIDToDispatchers(),
+		sinkQuota:             cfConfig.MemoryQuota,
 
 		metricTableTriggerEventDispatcherCount: metrics.TableTriggerEventDispatcherGauge.WithLabelValues(changefeedID.Keyspace(), changefeedID.Name(), "eventDispatcher"),
 		metricEventDispatcherCount:             metrics.EventDispatcherGauge.WithLabelValues(changefeedID.Keyspace(), changefeedID.Name(), "eventDispatcher"),

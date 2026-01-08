@@ -16,7 +16,6 @@ package dispatchermanager
 import (
 	"context"
 	"math"
-	"sync"
 	"time"
 
 	"github.com/pingcap/log"
@@ -227,7 +226,7 @@ func (e *DispatcherManager) mergeRedoDispatcher(dispatcherIDs []common.Dispatche
 func (e *DispatcherManager) cleanRedoDispatcher(id common.DispatcherID, schemaID int64) {
 	e.redoDispatcherMap.Delete(id)
 	e.redoSchemaIDToDispatchers.Delete(schemaID, id)
-	e.redoCurrentOperatorMap.Delete(id)
+	e.currentOperatorMap.Delete(id)
 	log.Debug("delete current working remove operator for redo dispatcher",
 		zap.String("changefeedID", e.changefeedID.String()),
 		zap.String("dispatcherID", id.String()),
@@ -339,8 +338,4 @@ func (e *DispatcherManager) GetAllRedoDispatchers(schemaID int64) []common.Dispa
 		dispatcherIDs = append(dispatcherIDs, e.GetTableTriggerRedoDispatcher().GetId())
 	}
 	return dispatcherIDs
-}
-
-func (e *DispatcherManager) GetRedoCurrentOperatorMap() *sync.Map {
-	return &e.redoCurrentOperatorMap
 }

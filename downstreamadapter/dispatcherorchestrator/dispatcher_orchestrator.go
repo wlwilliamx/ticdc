@@ -373,10 +373,9 @@ func createBootstrapResponse(
 			response.RedoCheckpointTs = redoStartTs
 		}
 		retrieveRedoDispatcherSpanForBootstrapResponse(manager, response)
-		retrieveRedoCurrentOperatorsForBootstrapResponse(changefeedID, manager, response)
 	}
 	retrieveDispatcherSpanForBootstrapResponse(manager, response)
-	retrieveCurrentOperatorsForBootstrapResponse(changefeedID, manager, response)
+	retrieveOperatorsForBootstrapResponse(changefeedID, manager, response)
 
 	return response
 }
@@ -474,49 +473,38 @@ func retrieveDispatcherSpanForBootstrapResponse(
 	})
 }
 
-func retrieveCurrentOperatorsForBootstrapResponse(
+func retrieveOperatorsForBootstrapResponse(
 	changefeedID *heartbeatpb.ChangefeedID,
 	manager *dispatchermanager.DispatcherManager,
 	response *heartbeatpb.MaintainerBootstrapResponse,
 ) {
 	manager.GetCurrentOperatorMap().Range(func(key, value any) bool {
 		req := value.(dispatchermanager.SchedulerDispatcherRequest)
-		_, ok := manager.GetDispatcherMap().Get(common.NewDispatcherIDFromPB(req.Config.DispatcherID))
-		// Log error if dispatcher not found and action is not create
-		// It's possible that the dispatcher is not found when the action is create
-		// because the dispatcher may be created after the operator is stored
-		if !ok && req.ScheduleAction != heartbeatpb.ScheduleAction_Create {
-			log.Error("Dispatcher not found, this should not happen",
-				zap.String("changefeed", changefeedID.String()),
-				zap.String("dispatcherID", req.Config.DispatcherID.String()),
-			)
-		}
-		response.Operators = append(response.Operators, &heartbeatpb.ScheduleDispatcherRequest{
-			ChangefeedID:   req.ChangefeedID,
-			Config:         req.Config,
-			ScheduleAction: req.ScheduleAction,
-			OperatorType:   req.OperatorType,
-		})
-		return true
-	})
-}
-
-func retrieveRedoCurrentOperatorsForBootstrapResponse(
-	changefeedID *heartbeatpb.ChangefeedID,
-	manager *dispatchermanager.DispatcherManager,
-	response *heartbeatpb.MaintainerBootstrapResponse,
-) {
-	manager.GetRedoCurrentOperatorMap().Range(func(key, value any) bool {
-		req := value.(dispatchermanager.SchedulerDispatcherRequest)
-		_, ok := manager.GetRedoDispatcherMap().Get(common.NewDispatcherIDFromPB(req.Config.DispatcherID))
-		// Log error if dispatcher not found and action is not create
-		// It's possible that the dispatcher is not found when the action is create
-		// because the dispatcher may be created after the operator is stored
-		if !ok && req.ScheduleAction != heartbeatpb.ScheduleAction_Create {
-			log.Error("Redo dispatcher not found, this should not happen",
-				zap.String("changefeed", changefeedID.String()),
-				zap.String("dispatcherID", req.Config.DispatcherID.String()),
-			)
+		dispatcherID := common.NewDispatcherIDFromPB(req.Config.DispatcherID)
+		if common.IsRedoMode(req.Config.Mode) {
+			if manager.RedoEnable && manager.GetRedoDispatcherMap() != nil {
+				_, ok := manager.GetRedoDispatcherMap().Get(dispatcherID)
+				// Log error if dispatcher not found and action is not create
+				// It's possible that the dispatcher is not found when the action is create
+				// because the dispatcher may be created after the operator is stored
+				if !ok && req.ScheduleAction != heartbeatpb.ScheduleAction_Create {
+					log.Error("Redo dispatcher not found, this should not happen",
+						zap.String("changefeed", changefeedID.String()),
+						zap.String("dispatcherID", req.Config.DispatcherID.String()),
+					)
+				}
+			}
+		} else {
+			_, ok := manager.GetDispatcherMap().Get(dispatcherID)
+			// Log error if dispatcher not found and action is not create
+			// It's possible that the dispatcher is not found when the action is create
+			// because the dispatcher may be created after the operator is stored
+			if !ok && req.ScheduleAction != heartbeatpb.ScheduleAction_Create {
+				log.Error("Dispatcher not found, this should not happen",
+					zap.String("changefeed", changefeedID.String()),
+					zap.String("dispatcherID", req.Config.DispatcherID.String()),
+				)
+			}
 		}
 		response.Operators = append(response.Operators, &heartbeatpb.ScheduleDispatcherRequest{
 			ChangefeedID:   req.ChangefeedID,

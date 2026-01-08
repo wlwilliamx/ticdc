@@ -69,7 +69,7 @@ func TestSpanReplication_NewAddDispatcherMessage_UseBlockTsForInFlightSyncPoint(
 		Stage:       heartbeatpb.BlockStage_WAITING,
 	})
 
-	msg := replicaSet.NewAddDispatcherMessage("node1")
+	msg := replicaSet.NewAddDispatcherMessage("node1", heartbeatpb.OperatorType_O_Add)
 	req := msg.Message[0].(*heartbeatpb.ScheduleDispatcherRequest)
 	require.Equal(t, uint64(10), req.Config.StartTs)
 	require.False(t, req.Config.SkipDMLAsStartTs)
@@ -86,7 +86,7 @@ func TestSpanReplication_NewAddDispatcherMessage_DontUseBlockTsAfterSyncPointDon
 		Stage:       heartbeatpb.BlockStage_DONE,
 	})
 
-	msg := replicaSet.NewAddDispatcherMessage("node1")
+	msg := replicaSet.NewAddDispatcherMessage("node1", heartbeatpb.OperatorType_O_Add)
 	req := msg.Message[0].(*heartbeatpb.ScheduleDispatcherRequest)
 	require.Equal(t, uint64(20), req.Config.StartTs)
 	require.False(t, req.Config.SkipDMLAsStartTs)
@@ -103,7 +103,7 @@ func TestSpanReplication_NewAddDispatcherMessage_UseBlockTsMinusOneForDDLInFligh
 		Stage:       heartbeatpb.BlockStage_WAITING,
 	})
 
-	msg := replicaSet.NewAddDispatcherMessage("node1")
+	msg := replicaSet.NewAddDispatcherMessage("node1", heartbeatpb.OperatorType_O_Add)
 	req := msg.Message[0].(*heartbeatpb.ScheduleDispatcherRequest)
 	require.Equal(t, uint64(9), req.Config.StartTs)
 	require.True(t, req.Config.SkipDMLAsStartTs)

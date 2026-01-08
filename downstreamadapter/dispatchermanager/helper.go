@@ -278,10 +278,10 @@ func handleScheduleCreate(
 	config := req.Config
 	dispatcherID := common.NewDispatcherIDFromPB(config.DispatcherID)
 	info := dispatcherCreateInfo{
-		Id:        dispatcherID,
-		TableSpan: config.Span,
-		StartTs:   config.StartTs,
-		SchemaID:  config.SchemaID,
+		Id:               dispatcherID,
+		TableSpan:        config.Span,
+		StartTs:          config.StartTs,
+		SchemaID:         config.SchemaID,
 		SkipDMLAsStartTs: config.SkipDMLAsStartTs,
 	}
 	if common.IsRedoMode(config.Mode) {

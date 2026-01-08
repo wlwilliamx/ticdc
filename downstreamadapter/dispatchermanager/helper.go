@@ -282,6 +282,7 @@ func handleScheduleCreate(
 		TableSpan: config.Span,
 		StartTs:   config.StartTs,
 		SchemaID:  config.SchemaID,
+		SkipDMLAsStartTs: config.SkipDMLAsStartTs,
 	}
 	if common.IsRedoMode(config.Mode) {
 		dispatcherManager.redoCurrentOperatorMap.Store(operatorKey, req)

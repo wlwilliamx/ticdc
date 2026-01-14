@@ -22,15 +22,27 @@ pd_port=${2}
 is_tls=${3:-false}
 
 if [ "$is_tls" == "true" ]; then
-	tso=$(run_cdc_cli tso query --pd=https://${pd_host}:${pd_port} | grep -v "Command to ticdc")
+	tso_output=$(run_cdc_cli tso query --pd=https://${pd_host}:${pd_port})
 else
-	tso=$(run_cdc_cli tso query --pd=http://${pd_host}:${pd_port} | grep -v "Command to ticdc")
+	tso_output=$(run_cdc_cli tso query --pd=http://${pd_host}:${pd_port})
 fi
 
-# make sure get tso only
-# the tso got above is:
-# "427768583921860609 PASS coverage: 2.7% of statements in github.com/pingcap/ticdc/..."
-# and only "427768583921860609" is a real tso
-echo $tso | awk -F " " '{print $1}'
+# Parse tso from command output.
+#
+# Why this is needed:
+# - `cdc.test` is a Go test binary, so stdout can include extra trailing text like:
+#     "427768583921860609 PASS coverage: ..."
+# - On some branches, TiCDC/CLI logs may also be printed to stdout before the actual
+#   number (for example, lines prefixed with "[2026/01/14 ...]"), which would break
+#   a naive "take the first token" parser.
+# We intentionally pick the first line that *starts* with digits and then take the
+# first field as the tso.
+tso=$(printf '%s\n' "$tso_output" | awk '/^[0-9]+/ {print $1; exit}')
+if [ -z "$tso" ]; then
+	echo "failed to parse tso from cli output:" >&2
+	printf '%s\n' "$tso_output" >&2
+	exit 1
+fi
+echo "$tso"
 
 set +x

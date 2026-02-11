@@ -16,27 +16,69 @@ downstream_uri="mysql://root@127.0.0.1:3306/?safe-mode=true&batch-dml-enable=fal
 # When upstream enables table-across-nodes (multiple dispatchers/captures producing to the same topic),
 # the consumer can see out-of-order DML commitTs. The consumer needs scheduler.enable-table-across-nodes=true
 # to accept and reorder these fallback events instead of dropping them.
-add_default_config=true
-for arg in "$@"; do
+# If the caller doesn't specify --config, generate a minimal one.
+#
+# If the caller specifies --config but doesn't set enable-table-across-nodes,
+# generate a derived config for the consumer only (so we don't change the
+# changefeed's config when the same file is reused in the test).
+user_config_file=""
+args_before_end_of_flags=()
+args_after_end_of_flags=()
+has_end_of_flags=false
+
+while [[ $# -gt 0 ]]; do
+	arg="$1"
+	shift
+
+	if $has_end_of_flags; then
+		args_after_end_of_flags+=("$arg")
+		continue
+	fi
+
 	case "$arg" in
-	--config | --config=*)
-		add_default_config=false
-		break
+	--)
+		has_end_of_flags=true
+		;;
+	--config)
+		if [[ $# -eq 0 ]]; then
+			echo "missing value for --config" >&2
+			exit 1
+		fi
+		user_config_file="$1"
+		shift
+		;;
+	--config=*)
+		user_config_file="${arg#--config=}"
+		;;
+	*)
+		args_before_end_of_flags+=("$arg")
 		;;
 	esac
 done
 
+consumer_replica_config="$workdir/pulsar_consumer_replica_config.toml"
 consumer_config_args=()
-if $add_default_config; then
-	consumer_replica_config="$workdir/pulsar_consumer_replica_config.toml"
+if [[ -z "$user_config_file" ]]; then
 	cat >"$consumer_replica_config" <<-'EOF'
 		[scheduler]
 		enable-table-across-nodes=true
 	EOF
 	consumer_config_args=(--config "$consumer_replica_config")
+elif grep -Eq '^[[:space:]]*enable-table-across-nodes[[:space:]]*=' "$user_config_file"; then
+	consumer_config_args=(--config "$user_config_file")
+else
+	consumer_replica_config_with_scheduler="$workdir/pulsar_consumer_replica_config_with_scheduler.toml"
+	cp "$user_config_file" "$consumer_replica_config_with_scheduler"
+	printf '\n[scheduler]\nenable-table-across-nodes=true\n' >>"$consumer_replica_config_with_scheduler"
+	consumer_config_args=(--config "$consumer_replica_config_with_scheduler")
+fi
+
+consumer_args=("${consumer_config_args[@]}" "${args_before_end_of_flags[@]}")
+if $has_end_of_flags; then
+	consumer_args+=(-- "${args_after_end_of_flags[@]}")
 fi
 
 # output debug log to allow us to check the consumer's behavior when it encounters errors
-cdc_pulsar_consumer --log-file $workdir/cdc_pulsar_consumer$log_suffix.log --log-level debug --downstream-uri ${downstream_uri} "${consumer_config_args[@]}" "$@" >>$workdir/cdc_pulsar_consumer_stdout$log_suffix.log 2>&1 &
+cdc_pulsar_consumer --log-file $workdir/cdc_pulsar_consumer$log_suffix.log --log-level debug --downstream-uri ${downstream_uri} "${consumer_args[@]}" >>$workdir/cdc_pulsar_consumer_stdout$log_suffix.log 2>&1 &
 
 cd $pwd

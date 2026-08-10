@@ -47,6 +47,8 @@ type fileCache struct {
 	filename string
 	flushed  chan struct{}
 	writer   *dataWriter
+
+	postFlushCallbacks []func()
 }
 
 type dataWriter struct {
@@ -81,6 +83,22 @@ func (f *fileCache) markFlushed() {
 	if f.flushed != nil {
 		close(f.flushed)
 	}
+}
+
+func (f *fileCache) addPostFlushCallback(callback func()) {
+	if callback != nil {
+		f.postFlushCallbacks = append(f.postFlushCallbacks, callback)
+	}
+}
+
+// runPostFlushCallbacks clears each slot before invocation so the retained
+// slice capacity cannot keep callback receivers alive after the file is durable.
+func (f *fileCache) runPostFlushCallbacks() {
+	for i, callback := range f.postFlushCallbacks {
+		f.postFlushCallbacks[i] = nil
+		callback()
+	}
+	f.postFlushCallbacks = nil
 }
 
 type fileWorkerGroup struct {
@@ -214,23 +232,27 @@ func (f *fileWorkerGroup) bgWriteLogs(
 	defer ticker.Stop()
 	num := 0
 	flushBatchSize := f.cfg.FlushBatchSize()
-	cacheEventPostFlush := make([]func(), 0)
 	flush := func() error {
 		err := f.flushAll(egCtx)
 		if err != nil {
 			return err
 		}
-		for _, fn := range cacheEventPostFlush {
-			fn()
-		}
 		num = 0
-		cacheEventPostFlush = cacheEventPostFlush[:0]
 		return nil
 	}
 	for {
+		// A size-rotated file can finish independently of the current file.
+		// Release only the durable prefix to preserve input callback order.
+		f.releaseFlushedFiles()
+		var firstRotatedFileFlushed <-chan struct{}
+		if len(f.files) > 1 {
+			firstRotatedFileFlushed = f.files[0].flushed
+		}
 		select {
 		case <-egCtx.Done():
 			return errors.Trace(egCtx.Err())
+		case <-firstRotatedFileFlushed:
+			continue
 		case <-ticker.C:
 			err := flush()
 			if err != nil {
@@ -241,9 +263,12 @@ func (f *fileWorkerGroup) bgWriteLogs(
 				log.Error("inputCh of redo file worker is closed unexpectedly")
 				return errors.ErrUnexpected.FastGenByArgs("inputCh of redo file worker is closed unexpectedly")
 			}
-			err := f.writeToCache(egCtx, event)
+			rotated, err := f.writeToCache(egCtx, event)
 			if err != nil {
 				return errors.Trace(err)
+			}
+			if rotated {
+				num = 0
 			}
 			num++
 			// Zero leaves file size and the periodic ticker as the only flush triggers.
@@ -252,9 +277,6 @@ func (f *fileWorkerGroup) bgWriteLogs(
 				if err != nil {
 					return errors.Trace(err)
 				}
-				event.PostFlush()
-			} else {
-				cacheEventPostFlush = append(cacheEventPostFlush, event.PostFlush)
 			}
 		}
 	}
@@ -322,46 +344,48 @@ func (f *fileWorkerGroup) newFileCache(data []byte, commitTs common.Ts) *fileCac
 
 func (f *fileWorkerGroup) writeToCache(
 	egCtx context.Context, event *polymorphicRedoEvent,
-) (err error) {
+) (rotated bool, err error) {
 	commitTs := event.commitTs
 	data := event.data
 	if len(data) == 0 {
-		return errors.ErrUnexpected.FastGenByArgs("encoded redo event data is empty")
+		return false, errors.ErrUnexpected.FastGenByArgs("encoded redo event data is empty")
 	}
 	writeLen := int64(len(data))
 	if writeLen > f.cfg.MaxLogSizeInBytes() {
 		// TODO: maybe we need to deal with the oversized commonEvent.
-		return errors.ErrRedoFileSizeExceed.GenWithStackByArgs(writeLen, f.cfg.MaxLogSizeInBytes())
+		return false, errors.ErrRedoFileSizeExceed.GenWithStackByArgs(writeLen, f.cfg.MaxLogSizeInBytes())
 	}
 	defer f.metricWriteBytes.Add(float64(writeLen))
 
 	if len(f.files) == 0 {
 		file := f.newFileCache(data, commitTs)
 		if file == nil {
-			return errors.ErrRedoWriterStopped.FastGenByArgs("failed to create file cache")
+			return false, errors.ErrRedoWriterStopped.FastGenByArgs("failed to create file cache")
 		}
+		file.addPostFlushCallback(event.callback)
 		f.files = append(f.files, file)
-		return nil
+		return false, nil
 	}
 
 	file := f.files[len(f.files)-1]
 	if file.fileSize+writeLen > f.cfg.MaxLogSizeInBytes() {
 		select {
 		case <-egCtx.Done():
-			return errors.Trace(egCtx.Err())
+			return false, errors.Trace(egCtx.Err())
 		case f.flushCh <- file:
 		}
 		file := f.newFileCache(data, commitTs)
 		if file == nil {
-			return errors.ErrRedoWriterStopped.FastGenByArgs("failed to create file cache")
+			return false, errors.ErrRedoWriterStopped.FastGenByArgs("failed to create file cache")
 		}
+		file.addPostFlushCallback(event.callback)
 		f.files = append(f.files, file)
-		return nil
+		return true, nil
 	}
 
 	_, err = file.writer.Write(data)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	file.fileSize += writeLen
@@ -371,7 +395,24 @@ func (f *fileWorkerGroup) writeToCache(
 	if commitTs < file.minCommitTs {
 		file.minCommitTs = commitTs
 	}
-	return nil
+	file.addPostFlushCallback(event.callback)
+	return false, nil
+}
+
+// releaseFlushedFiles invokes callbacks for the durable prefix of rotated
+// files. The last file is still writable and must remain pending until a flush.
+func (f *fileWorkerGroup) releaseFlushedFiles() {
+	for len(f.files) > 1 {
+		file := f.files[0]
+		select {
+		case <-file.flushed:
+			file.runPostFlushCallbacks()
+			f.files[0] = nil
+			f.files = f.files[1:]
+		default:
+			return
+		}
+	}
 }
 
 func (f *fileWorkerGroup) flushAll(egCtx context.Context) error {
@@ -393,6 +434,10 @@ func (f *fileWorkerGroup) flushAll(egCtx context.Context) error {
 			return errors.Trace(err)
 		}
 	}
+	for _, file := range f.files {
+		file.runPostFlushCallbacks()
+	}
+	clear(f.files)
 	f.files = f.files[:0]
 	return nil
 }

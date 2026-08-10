@@ -129,3 +129,67 @@ func TestFileWorkerDisablesCountBasedFlushWithZero(t *testing.T) {
 	cancel()
 	require.ErrorIs(t, <-runErrCh, context.Canceled)
 }
+
+// TestFileWorkerReleasesSizeRotatedCallbacksInOrder creates three events that
+// each force the previous file to rotate, completes the second upload before
+// the first, and verifies callbacks run in input order as the durable prefix
+// advances. It also checks that invoked callback slots no longer retain their
+// function values while the current unflushed file remains unacknowledged.
+func TestFileWorkerReleasesSizeRotatedCallbacksInOrder(t *testing.T) {
+	const eventSize = 600 * 1024
+
+	inputCh := make(chan *polymorphicRedoEvent)
+	fileWorkers := newTestFileWorkerGroup(t, inputCh, 0)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	runErrCh := make(chan error, 1)
+	go func() {
+		runErrCh <- fileWorkers.bgWriteLogs(ctx, inputCh)
+	}()
+
+	callbackOrder := make(chan int, 3)
+	for i := 1; i <= 3; i++ {
+		index := i
+		inputCh <- &polymorphicRedoEvent{
+			commitTs: uint64(i),
+			data:     make([]byte, eventSize),
+			callback: func() {
+				callbackOrder <- index
+			},
+		}
+	}
+
+	firstFile := <-fileWorkers.flushCh
+	secondFile := <-fileWorkers.flushCh
+	firstCallbackSlots := firstFile.postFlushCallbacks
+	secondCallbackSlots := secondFile.postFlushCallbacks
+	require.Len(t, firstCallbackSlots, 1)
+	require.Len(t, secondCallbackSlots, 1)
+
+	secondFile.markFlushed()
+	require.Never(t, func() bool {
+		return len(callbackOrder) != 0
+	}, 100*time.Millisecond, 10*time.Millisecond)
+
+	firstFile.markFlushed()
+	select {
+	case index := <-callbackOrder:
+		require.Equal(t, 1, index)
+	case <-time.After(time.Second):
+		require.FailNow(t, "first rotated file callback was not released")
+	}
+	select {
+	case index := <-callbackOrder:
+		require.Equal(t, 2, index)
+	case <-time.After(time.Second):
+		require.FailNow(t, "second rotated file callback was not released")
+	}
+
+	require.Nil(t, firstCallbackSlots[0])
+	require.Nil(t, secondCallbackSlots[0])
+	require.Empty(t, callbackOrder)
+
+	cancel()
+	require.ErrorIs(t, <-runErrCh, context.Canceled)
+}

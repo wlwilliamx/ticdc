@@ -28,6 +28,7 @@ import (
 	"github.com/pingcap/ticdc/pkg/fsutil"
 	"github.com/pingcap/ticdc/pkg/metrics"
 	"github.com/pingcap/ticdc/pkg/redo"
+	"github.com/pingcap/ticdc/pkg/redo/codec"
 	"github.com/pingcap/ticdc/pkg/redo/writer"
 	"github.com/pingcap/ticdc/pkg/util"
 	"github.com/pingcap/ticdc/pkg/uuid"
@@ -497,6 +498,71 @@ func TestRunFlushesOnBatchBoundaryAndExecutesPostFlush(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return postFlushCnt.Load() == int64(flushBatchSize)
 	}, 10*time.Second, 20*time.Millisecond)
+
+	cancel()
+	require.ErrorIs(t, <-runErrCh, context.Canceled)
+	require.NoError(t, w.Close())
+}
+
+// TestRunReleasesCallbacksAfterSizeRotation writes one event that exactly fills
+// a local redo file, confirms its callback remains pending, then writes a second
+// event to rotate the first file. The first callback must run after that durable
+// rotation while the second event remains unacknowledged in the current file.
+func TestRunReleasesCallbacksAfterSizeRotation(t *testing.T) {
+	dir := t.TempDir()
+	firstCallbackDone := make(chan struct{})
+	firstEvent := &pevent.RedoRowEvent{
+		StartTs:  1,
+		CommitTs: 1,
+		Callback: func() {
+			close(firstCallbackDone)
+		},
+	}
+	encodedFirstEvent, err := codec.MarshalRedoLog(firstEvent.ToRedoLog(), nil)
+	require.NoError(t, err)
+	_, padBytes := writer.EncodeFrameSize(len(encodedFirstEvent))
+	maxLogSizeInBytes := int64(8 + len(encodedFirstEvent) + padBytes)
+
+	w, err := newWriter(&localFileConfig{
+		dir:               dir,
+		maxLogSizeInBytes: maxLogSizeInBytes,
+		flushIntervalInMs: int64(time.Hour / time.Millisecond),
+		flushBatchSize:    0,
+		flushWorkerNum:    1,
+	}, redo.RedoRowLogFileType, nil)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	runErrCh := make(chan error, 1)
+	go func() {
+		runErrCh <- w.Run(ctx)
+	}()
+
+	w.GetInputCh() <- firstEvent
+	require.Eventually(t, func() bool {
+		return w.eventCommitTS.Load() == firstEvent.CommitTs
+	}, 10*time.Second, 10*time.Millisecond)
+	select {
+	case <-firstCallbackDone:
+		require.FailNow(t, "callback ran before the file became durable")
+	default:
+	}
+
+	secondCallbackCount := atomic.NewInt64(0)
+	secondEvent := &pevent.RedoRowEvent{
+		StartTs:  2,
+		CommitTs: 2,
+		Callback: func() {
+			secondCallbackCount.Inc()
+		},
+	}
+	w.GetInputCh() <- secondEvent
+	select {
+	case <-firstCallbackDone:
+	case <-time.After(10 * time.Second):
+		require.FailNow(t, "callback was not released after size rotation")
+	}
+	require.Zero(t, secondCallbackCount.Load())
 
 	cancel()
 	require.ErrorIs(t, <-runErrCh, context.Canceled)

@@ -58,6 +58,7 @@ type fileWriterConfig interface {
 	Dir() string
 	MaxLogSizeInBytes() int64
 	FlushIntervalInMs() int64
+	FlushBatchSize() int
 	FlushWorkerNum() int
 	UseExternalStorage() bool
 }
@@ -66,6 +67,7 @@ type localFileConfig struct {
 	dir               string
 	maxLogSizeInBytes int64
 	flushIntervalInMs int64
+	flushBatchSize    int
 	flushWorkerNum    int
 }
 
@@ -87,6 +89,10 @@ func (cfg *localFileConfig) MaxLogSizeInBytes() int64 {
 
 func (cfg *localFileConfig) FlushIntervalInMs() int64 {
 	return cfg.flushIntervalInMs
+}
+
+func (cfg *localFileConfig) FlushBatchSize() int {
+	return cfg.flushBatchSize
 }
 
 func (cfg *localFileConfig) FlushWorkerNum() int {
@@ -356,7 +362,8 @@ func (w *Writer) encode(ctx context.Context) error {
 	ticker := time.NewTicker(d)
 	defer ticker.Stop()
 	num := 0
-	cacheEventPostFlush := make([]func(), 0, redo.DefaultFlushBatchSize)
+	flushBatchSize := w.cfg.FlushBatchSize()
+	cacheEventPostFlush := make([]func(), 0)
 	flush := func() error {
 		err := w.Flush()
 		if err != nil {
@@ -384,7 +391,8 @@ func (w *Writer) encode(ctx context.Context) error {
 				return err
 			}
 			num++
-			if num >= redo.DefaultFlushBatchSize {
+			// Zero leaves file size and the periodic ticker as the only flush triggers.
+			if flushBatchSize > 0 && num >= flushBatchSize {
 				err := flush()
 				if err != nil {
 					return errors.Trace(err)

@@ -213,7 +213,8 @@ func (f *fileWorkerGroup) bgWriteLogs(
 	ticker := time.NewTicker(d)
 	defer ticker.Stop()
 	num := 0
-	cacheEventPostFlush := make([]func(), 0, redo.DefaultFlushBatchSize)
+	flushBatchSize := f.cfg.FlushBatchSize()
+	cacheEventPostFlush := make([]func(), 0)
 	flush := func() error {
 		err := f.flushAll(egCtx)
 		if err != nil {
@@ -245,7 +246,8 @@ func (f *fileWorkerGroup) bgWriteLogs(
 				return errors.Trace(err)
 			}
 			num++
-			if num > redo.DefaultFlushBatchSize {
+			// Zero leaves file size and the periodic ticker as the only flush triggers.
+			if flushBatchSize > 0 && num >= flushBatchSize {
 				err := flush()
 				if err != nil {
 					return errors.Trace(err)
